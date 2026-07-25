@@ -36,6 +36,8 @@ FUNDS = {
     "00988A": {"issuer": "uni", "uni_code": "61YTW", "name": "主動統一全球創新"},
     "00991A": {"issuer": "fuhhwa", "page_id": "ETF23", "name": "主動復華未來50"},
     "00990A": {"issuer": "yuanta", "name": "主動元大AI新經濟"},
+    "00992A": {"issuer": "capital", "cap_id": 500, "name": "主動群益科技創新"},
+    "00982A": {"issuer": "capital", "cap_id": 399, "name": "主動群益台灣強棒"},
 }
 
 SCHEMA = """
@@ -244,7 +246,53 @@ def _fetch_yuanta(etf, target=None):
     }
 
 
-_FETCHERS = {"uni": _fetch_uni, "fuhhwa": _fetch_fuhhwa, "yuanta": _fetch_yuanta}
+# ---------------------------------------------------------------- 群益投信
+# capitalfund.com.tw 在 Imperva 後面,標準 curl/requests 的 TLS 指紋過不了,
+# 需用 curl_cffi 模擬 Chrome。資料走 /CFWeb/api/etf/ 的 POST JSON API。
+_CAPITAL = "https://www.capitalfund.com.tw"
+_CAP_H = {"Accept": "application/json", "Content-Type": "application/json",
+          "Origin": _CAPITAL}
+
+
+def _fetch_capital(etf, target=None):
+    from curl_cffi import requests as cr  # 延後匯入:僅群益需要此依賴
+    cap_id = FUNDS[etf]["cap_id"]
+    if target is not None:
+        date_str = f"{target:%Y/%m/%d}"
+    else:
+        nav = cr.post(f"{_CAPITAL}/CFWeb/api/etf/nav", json={"id": 0},
+                      headers=_CAP_H, impersonate="chrome", timeout=30
+                      ).json().get("data", [])
+        date_str = next((x.get("date1") for x in nav
+                         if str(x.get("fundId")) == str(cap_id)), None)
+        if not date_str:
+            raise LookupError(f"capital {etf} 取不到最新日期")
+    r = cr.post(f"{_CAPITAL}/CFWeb/api/etf/buyback",
+                json={"fundId": cap_id, "date": date_str},
+                headers=_CAP_H, impersonate="chrome", timeout=30)
+    r.raise_for_status()
+    d = r.json().get("data") or {}
+    pcf, stocks = d.get("pcf") or {}, d.get("stocks") or []
+    if not stocks:
+        raise LookupError(f"capital {etf} {date_str} 無持股明細")
+    total_assets = pcf["nav"]  # 群益 pcf.nav 是基金淨資產(元),pUnit 才是每單位淨值
+    holdings = [{
+        "code": str(s["stocNo"]).strip(), "name": s["stocName"].strip(),
+        "shares": s["share"],
+        # 群益不給個股市值,用 淨資產×權重 估算(供排序用)
+        "amount": round(total_assets * s["weight"] / 100),
+        "weight": s["weight"],
+    } for s in stocks]
+    return {
+        "etf": etf, "data_date": pcf["date1"],
+        "nav": pcf["pUnit"], "units": pcf["totUnit"],
+        "total_assets": total_assets, "holdings": holdings,
+        "raw": r.content, "raw_ext": "json",
+    }
+
+
+_FETCHERS = {"uni": _fetch_uni, "fuhhwa": _fetch_fuhhwa,
+             "yuanta": _fetch_yuanta, "capital": _fetch_capital}
 
 
 def _fetch_one(etf, target=None):
@@ -286,8 +334,9 @@ def fetch(conn):
 def backfill(conn, days):
     init(conn)
     for etf in FUNDS:
-        if FUNDS[etf]["issuer"] == "yuanta":
-            print(f"[backfill] {etf}: 元大不提供歷史,略過")
+        # 元大 API 只有最新一日;群益歷史日期行為未驗證,暫只抓最新往前累積
+        if FUNDS[etf]["issuer"] in ("yuanta", "capital"):
+            print(f"[backfill] {etf}: 來源不回補歷史,略過")
             continue
         for i in range(1, days + 1):
             d = date.today() - timedelta(days=i)

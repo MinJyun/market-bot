@@ -49,6 +49,12 @@ python3 main.py fetch --source active_etf   # 只處理指定來源(可重複)
 | 00988A | 主動統一全球創新 | 統一 GetPCF API (JSON) | 可 |
 | 00991A | 主動復華未來50 | 復華 assetsExcel API (xlsx) | 可 |
 | 00990A | 主動元大AI新經濟 | 元大 bridge API (JSON) | 不可(僅最新一日,斷抓即缺) |
+| 00992A | 主動群益科技創新 | 群益 CFWeb buyback API (JSON) | 暫不(未驗證) |
+| 00982A | 主動群益台灣強棒 | 群益 CFWeb buyback API (JSON) | 暫不(未驗證) |
+
+> 群益 capitalfund.com.tw 在 Imperva WAF 後面,標準 requests 的 TLS 指紋被擋,
+> 改用 `curl_cffi` 模擬 Chrome 才能抓;所以本專案依賴 `curl_cffi`(見 requirements.txt)。
+> 野村 00980A(F5 BigIP,對非瀏覽器發圖片挑戰)尚未納入,需 headless browser。
 
 判讀注意:
 

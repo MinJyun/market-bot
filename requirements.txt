@@ -1,0 +1,2 @@
+requests
+curl_cffi   # 群益 capitalfund.com.tw 在 Imperva 後面,需模擬 Chrome TLS 指紋
