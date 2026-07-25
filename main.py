@@ -1,76 +1,55 @@
-"""主動式 ETF 每日持股追蹤。
+"""市場數據追蹤:排程抓取 → 存 → 推 LINE。
 
-用法：
-    python3 main.py fetch                 # 抓五檔最新持股並入庫
-    python3 main.py backfill --days 10   # 回補統一/復華歷史（元大不支援）
-    python3 main.py report                # 產出每檔最近兩日的買賣報告
-    python3 main.py daily                 # fetch + report（給排程用）
+每個資料源是 sources/ 下的一個模組,實作 fetch/build_message
+(及選配的 backfill/report)。要加新數據(例:期貨大額交易人)就新增一個
+模組並登記到 SOURCES,排程/儲存/推播共用不必重寫。
+
+用法:
+    python3 main.py fetch                  # 抓各來源最新資料入庫
+    python3 main.py backfill --days 10     # 回補歷史(支援的來源)
+    python3 main.py report                 # 產出報告(支援的來源)
+    python3 main.py notify [--dry-run]     # 推 LINE(dry-run 只印不發)
+    python3 main.py daily                  # fetch + report + notify(排程用)
+    --source active_etf                    # 只處理指定來源(可重複)
 """
 import argparse
 import sys
-import time
-from datetime import date, timedelta
 
-import fetchers
-import report
-import store
+from core import notify as notifier
+from core import store
+from sources import active_etf
 
-
-def cmd_fetch(conn, etfs):
-    failures = []
-    for etf in etfs:
-        try:
-            snap = fetchers.fetch(etf)
-            store.save_snapshot(conn, snap)
-            print(f"[fetch] {etf}: 資料日 {snap['data_date']}，"
-                  f"{len(snap['holdings'])} 檔持股")
-        except Exception as e:
-            failures.append(etf)
-            print(f"[fetch] {etf}: 失敗 — {e}", file=sys.stderr)
-        time.sleep(1)
-    return failures
-
-
-def cmd_backfill(conn, etfs, days):
-    for etf in etfs:
-        if fetchers.FUNDS[etf]["issuer"] == "yuanta":
-            print(f"[backfill] {etf}: 元大不提供歷史，略過")
-            continue
-        for i in range(1, days + 1):
-            d = date.today() - timedelta(days=i)
-            if d.weekday() >= 5:  # 週末必無資料
-                continue
-            try:
-                # 統一的 date 參數是公告日，回應的資料日通常是前一交易日；
-                # 一律以回應內的實際資料日入庫（重複日期會冪等覆蓋）。
-                snap = fetchers.fetch(etf, d)
-                store.save_snapshot(conn, snap)
-                print(f"[backfill] {etf} 查 {d} → 資料日 {snap['data_date']}，"
-                      f"{len(snap['holdings'])} 檔持股")
-            except LookupError:
-                print(f"[backfill] {etf} {d}: 無資料（休市或未揭露）")
-            except Exception as e:
-                print(f"[backfill] {etf} {d}: 失敗 — {e}", file=sys.stderr)
-            time.sleep(1)
+SOURCES = {s.NAME: s for s in [active_etf]}
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("command", choices=["fetch", "backfill", "report", "daily"])
-    ap.add_argument("--etf", action="append", choices=list(fetchers.FUNDS),
-                    help="只處理指定 ETF（可重複），預設全部")
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("command",
+                    choices=["fetch", "backfill", "report", "notify", "daily"])
+    ap.add_argument("--source", action="append", choices=list(SOURCES),
+                    help="只處理指定來源(可重複),預設全部")
     ap.add_argument("--days", type=int, default=10, help="backfill 回補天數")
+    ap.add_argument("--dry-run", action="store_true", help="notify 只印不發")
     args = ap.parse_args()
-    etfs = args.etf or list(fetchers.FUNDS)
+    sources = [SOURCES[n] for n in (args.source or SOURCES)]
 
     conn = store.connect()
+    cfg = notifier.load_config()
     failures = []
-    if args.command in ("fetch", "daily"):
-        failures = cmd_fetch(conn, etfs)
-    if args.command == "backfill":
-        cmd_backfill(conn, etfs, args.days)
-    if args.command in ("report", "daily"):
-        report.write_reports(conn, etfs)
+    for s in sources:
+        if args.command in ("fetch", "daily"):
+            failures += [f"{s.NAME}:{x}" for x in (s.fetch(conn) or [])]
+        if args.command == "backfill" and hasattr(s, "backfill"):
+            s.backfill(conn, args.days)
+        if args.command in ("report", "daily") and hasattr(s, "report"):
+            s.report(conn)
+        if args.command in ("notify", "daily"):
+            if cfg is None:
+                print("[notify] 未設定 line_config.json,跳過推播")
+            else:
+                text, sig = s.build_message(conn)
+                notifier.notify(cfg, s.NAME, text, sig, dry_run=args.dry_run)
     sys.exit(1 if failures else 0)
 
 

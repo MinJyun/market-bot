@@ -6,8 +6,6 @@ cd "$(dirname "$0")"
 /usr/bin/python3 -W ignore main.py daily
 rc=$?
 
-/usr/bin/python3 -W ignore notify.py
-
 git add -A data reports
 if ! git diff --cached --quiet; then
     git commit -q -m "daily snapshot $(date +%Y-%m-%d)"

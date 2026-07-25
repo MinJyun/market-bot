@@ -1,60 +1,76 @@
-# track-fund
+# market-bot
 
-追蹤五檔台灣主動式 ETF 的每日持股，比對相鄰兩個資料日推算經理人買賣。
+排程抓取台股市場數據 → 存 SQLite → 推 LINE 群組。外掛式架構:每種數據是
+`sources/` 下的一個模組,共用排程、儲存與推播;要加新數據就新增一個模組。
 
-| ETF | 名稱 | 資料來源 | 歷史回補 |
-|---|---|---|---|
-| 00981A | 主動統一台股增長 | 統一投信 GetPCF API (JSON) | 可 |
-| 00403A | 主動統一升級50 | 統一投信 GetPCF API (JSON) | 可 |
-| 00988A | 主動統一全球創新 | 統一投信 GetPCF API (JSON) | 可 |
-| 00991A | 主動復華未來50 | 復華投信 assetsExcel API (xlsx) | 可 |
-| 00990A | 主動元大AI新經濟 | 元大投信 bridge API (JSON) | 不可（只有最新一日，斷抓即缺） |
+## 架構
+
+```
+market-bot/
+├── main.py              # 調度:遍歷啟用的來源 → fetch / report / notify
+├── daily.sh            # 排程入口(launchd 呼叫):daily + 自動 commit/push
+├── core/
+│   ├── store.py         # 共用 SQLite 連線 + 原始檔落地
+│   └── notify.py        # LINE 推播 + 去重(以來源為 key)
+├── sources/
+│   └── active_etf.py    # 資料源:台股主動式 ETF 每日持股
+├── data/
+│   ├── market.db        # SQLite(各來源各自建表)
+│   └── raw/<來源>/<資料日>/   # 原始回應,供重新解析備查
+├── reports/<資料日>/     # 各來源產出的 Markdown 報告
+└── line_config.json     # LINE 憑證與推播目標(gitignore,勿入版控)
+```
+
+**資料源契約**:每個 `sources/*.py` 模組提供 `NAME`、`fetch(conn)`、
+`build_message(conn) → (文字, 簽章)`,選配 `backfill(conn, days)`、`report(conn)`。
+在 `main.py` 的 `SOURCES` 登記後即納入排程。
 
 ## 用法
 
 ```bash
-python3 main.py daily                 # 抓最新 + 產報告（給每日排程用）
-python3 main.py fetch                 # 只抓最新持股入庫
-python3 main.py backfill --days 10    # 回補統一/復華歷史
-python3 main.py report                # 只產報告
-# --etf 00981A 可限定單檔，可重複
+python3 main.py daily                  # 抓取 + 報告 + 推 LINE(排程用)
+python3 main.py fetch                   # 只抓最新入庫
+python3 main.py backfill --days 10      # 回補歷史(支援的來源)
+python3 main.py report                  # 只產報告
+python3 main.py notify [--dry-run]      # 只推 LINE(dry-run 只印不發)
+python3 main.py fetch --source active_etf   # 只處理指定來源(可重複)
 ```
 
-排程：`~/Library/LaunchAgents/com.minjyun.track-fund.plist` 於週一至週五 18:00
-執行 `daily.sh`（抓取 + 產報告 + 自動 commit；統一 16:30 後才揭露當日資料）。
-手動觸發：`launchctl kickstart gui/$(id -u)/com.minjyun.track-fund`。
+排程:`~/Library/LaunchAgents/com.minjyun.market-bot.plist`,週一至週五
+18:00 與 21:30(備援)各跑一次 `daily.sh`,手動觸發:
+`launchctl kickstart gui/$(id -u)/com.minjyun.market-bot`。
 
-## 資料存放
+## 資料源:active_etf(台股主動式 ETF)
 
-- `data/raw/{資料日}/{ETF}.json|xlsx` — 投信原始回應，供重新解析與備查
-- `data/holdings.db` — SQLite：`fund_day`（淨值/流通單位數）、`holding`（個股股數/金額/權重）
-- `reports/{資料日}/{ETF}.md` — 買賣報告：新進場、清倉、加碼、減碼
+| ETF | 名稱 | 來源 | 歷史回補 |
+|---|---|---|---|
+| 00981A | 主動統一台股增長 | 統一 GetPCF API (JSON) | 可 |
+| 00403A | 主動統一升級50 | 統一 GetPCF API (JSON) | 可 |
+| 00988A | 主動統一全球創新 | 統一 GetPCF API (JSON) | 可 |
+| 00991A | 主動復華未來50 | 復華 assetsExcel API (xlsx) | 可 |
+| 00990A | 主動元大AI新經濟 | 元大 bridge API (JSON) | 不可(僅最新一日,斷抓即缺) |
 
-## LINE 推播
+判讀注意:
 
-`daily.sh` 跑完會執行 `notify.py`，把各檔最新異動摘要推到 LINE 群組
-（Messaging API push）。設定檔 `line_config.json`（gitignored），兩種擇一：
+- 各家揭露延遲不同(統一當日、復華 T、元大約 T-2),diff 以「資料日」對齊。
+- 五檔皆為現金申購/買回:申贖進出的是現金、不直接改變持股,所以股數差就是
+  經理人實際買賣,不做規模校正。流通單位數變化列在報告開頭供判讀。
+- 除權息、股票分割造成的股數跳動無法自動辨識,遇到異常大的變化請對照原始檔。
+- 來源皆為未公開的官網內部 API,投信改版即失效;抓取失敗會印錯誤並以非零
+  exit code 結束。
+
+## LINE 推播設定
+
+`line_config.json`(gitignore),token 兩種擇一,並指定推播目標:
 
 ```json
-{"channel_id": "<Channel ID>", "channel_secret": "<Channel secret>", "to": "<群組ID C開頭>"}
+{
+  "channel_access_token": "<長期權杖>",
+  "to": "<預設群組ID C開頭>",
+  "targets": {"active_etf": "<可指定該來源專屬群組>"}
+}
 ```
 
-Channel ID / secret 在 LINE Developers Console 的 **Basic settings** 分頁，
-程式每次推播自動換發短效 token，不必另外發行長期權杖。若你已有長期權杖：
-
-```json
-{"channel_access_token": "<長期權杖>", "to": "<群組ID C開頭>"}
-```
-
-未建設定檔則跳過。同一組資料日只發一次（狀態在 `data/notify_state.json`），
-測試用 `python3 notify.py --dry-run` 可只印不發。
-
-## 判讀注意
-
-- 各家揭露延遲不同（統一當日、復華 T、元大約 T-2），diff 以「資料日」對齊，不是抓取日。
-- 五檔皆為**現金申購/買回**：申贖進出的是現金，不會直接改變持股，
-  所以股數差就是經理人實際買賣，報告不做規模校正。流通單位數變化列在
-  報告開頭，供判讀買賣是「調整持股」還是「消化申贖」（大額申購後的
-  布建買盤、買回後的變現賣壓也是真實下單）。
-- 除權息、股票分割造成的股數跳動無法自動辨識，遇到異常大的變化請對照原始檔。
-- 資料來源皆為未公開的官網內部 API，投信改版即失效；抓取失敗會印錯誤並以非零 exit code 結束。
+或用 `channel_id` + `channel_secret`(Basic settings 分頁就有,自動換發短效
+token)。`targets` 未指定的來源用 `to` 當預設。去重狀態在
+`data/notify_state.json`,同一來源簽章未變不重發。
