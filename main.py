@@ -1,15 +1,16 @@
 """市場數據追蹤:排程抓取 → 存 → 推 LINE。
 
 每個資料源是 sources/ 下的一個模組,實作 fetch/build_message
-(及選配的 backfill/report)。要加新數據就新增一個模組並登記到 SOURCES,
-排程/儲存/推播共用不必重寫。
+(及選配的 backfill/report)。資料源依主題分組(GROUPS),每組合併成「一則」
+LINE 推播:ETF 持股獨立一則、法人籌碼(現貨→期貨→選擇權)合併一則。
+daily 會先把所有來源抓齊,才組訊息推播。
 
 用法:
     python3 main.py fetch                  # 抓各來源最新資料入庫
     python3 main.py backfill --days 10     # 回補歷史(支援的來源)
     python3 main.py report                 # 產出報告(支援的來源)
     python3 main.py notify [--dry-run]     # 推 LINE(dry-run 只印不發)
-    python3 main.py daily                  # fetch + report + notify(排程用)
+    python3 main.py daily                  # fetch + report + notify + 當日 md(排程用)
     --source active_etf                    # 只處理指定來源(可重複)
 """
 import argparse
@@ -21,19 +22,23 @@ from core import notify as notifier
 from core import store
 from sources import active_etf, futures_traders, inst_spot, options_traders
 
-SOURCES = {s.NAME: s for s in
-           [active_etf, futures_traders, options_traders, inst_spot]}
+# (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
+GROUPS = [
+    ("etf", "主動ETF持股", [active_etf]),
+    ("chips", "法人籌碼", [inst_spot, futures_traders, options_traders]),
+]
+SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 REPORTS = Path(__file__).parent / "reports"
 
 
-def _write_daily_md(messages):
-    """把當天各來源訊息彙整成「本機當天日期」的 md,留存/檢視用。"""
+def _write_daily_md(sections):
+    """一天一份彙整檔 reports/<本機當天日期>/daily.md,含當天全部區塊。"""
     today = date.today().isoformat()
     out = REPORTS / today
     out.mkdir(parents=True, exist_ok=True)
     body = [f"# 每日市場籌碼 {today}", ""]
-    for name, text in messages.items():
-        body.append(f"## {name}\n\n```\n{text}\n```\n")
+    for title, text in sections:
+        body.append(f"## {title}\n\n```\n{text}\n```\n")
     (out / "daily.md").write_text("\n".join(body), encoding="utf-8")
     print(f"[daily] 已寫入 {out / 'daily.md'}")
 
@@ -49,34 +54,59 @@ def main():
     ap.add_argument("--days", type=int, default=10, help="backfill 回補天數")
     ap.add_argument("--dry-run", action="store_true", help="notify 只印不發")
     args = ap.parse_args()
-    sources = [SOURCES[n] for n in (args.source or SOURCES)]
+    only = set(args.source) if args.source else None
 
     conn = store.connect()
     cfg = notifier.load_config()
-    failures, messages = [], {}
-    for s in sources:
-        if args.command in ("fetch", "daily"):
-            failures += [f"{s.NAME}:{x}" for x in (s.fetch(conn) or [])]
-        if args.command == "backfill" and hasattr(s, "backfill"):
-            s.backfill(conn, args.days)
-        if args.command in ("report", "daily") and hasattr(s, "report"):
-            s.report(conn)
-        if args.command in ("notify", "daily"):
-            text, sig = s.build_message(conn)
-            if text:
-                messages[s.NAME] = text
+    failures = []
+
+    def active(s):
+        return only is None or s.NAME in only
+
+    # 1) 先把所有來源抓齊(發通知前確保資料完整)
+    if args.command in ("fetch", "daily"):
+        for s in SOURCES.values():
+            if active(s):
+                failures += [f"{s.NAME}:{x}" for x in (s.fetch(conn) or [])]
+    if args.command == "backfill":
+        for s in SOURCES.values():
+            if active(s) and hasattr(s, "backfill"):
+                s.backfill(conn, args.days)
+    if args.command in ("report", "daily"):
+        for s in SOURCES.values():
+            if active(s) and hasattr(s, "report"):
+                s.report(conn)
+
+    # 2) 分組:每組合併成一則推播
+    sections = []
+    if args.command in ("notify", "daily"):
+        for key, title, members in GROUPS:
+            parts, sig = [], {}
+            for m in members:
+                if not active(m):
+                    continue
+                text, s = m.build_message(conn)
+                if text:
+                    parts.append(text)
+                    sig[m.NAME] = s
+            if not parts:
+                continue
+            combined = "\n\n".join(parts)
+            sections.append((title, combined))
             if cfg is None:
                 if args.command == "notify":
                     print("[notify] 未設定 line_config.json,跳過推播")
             else:
-                notifier.notify(cfg, s.NAME, text, sig, dry_run=args.dry_run)
+                notifier.notify(cfg, key, combined, sig, dry_run=args.dry_run)
 
-    if args.command in ("notify", "daily") and messages:
-        _write_daily_md(messages)
-    if args.command in ("notify", "daily") and cfg is not None:
-        used, limit = notifier.quota_status(cfg)
-        if used is not None:
-            print(f"[quota] 本月已通知 {used} / {limit} 封 LINE")
+    # 3) 當日彙整 md + 用量:只在完整 daily 執行時寫(避免被單源覆寫)
+    if args.command == "daily":
+        if sections:
+            _write_daily_md(sections)
+        if cfg is not None:
+            used, limit = notifier.quota_status(cfg)
+            if used is not None:
+                print(f"[quota] 本月已通知 {used} / {limit} 封 LINE")
     sys.exit(1 if failures else 0)
 
 
