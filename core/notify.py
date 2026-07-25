@@ -57,6 +57,19 @@ def push(token, to, text):
         raise RuntimeError(f"LINE push 失敗 {r.status_code}: {r.text}")
 
 
+def quota_status(cfg):
+    """回傳 (本月已用, 每月上限);查詢失敗回 (None, None)。"""
+    try:
+        hdr = {"Authorization": f"Bearer {_token(cfg)}"}
+        used = requests.get("https://api.line.me/v2/bot/message/quota/consumption",
+                            headers=hdr, timeout=20).json().get("totalUsage")
+        limit = requests.get("https://api.line.me/v2/bot/message/quota",
+                             headers=hdr, timeout=20).json().get("value")
+        return used, limit
+    except Exception:
+        return None, None
+
+
 def _load_state():
     return json.loads(STATE.read_text()) if STATE.exists() else {}
 
