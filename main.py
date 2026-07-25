@@ -17,9 +17,9 @@ import sys
 
 from core import notify as notifier
 from core import store
-from sources import active_etf
+from sources import active_etf, futures_traders
 
-SOURCES = {s.NAME: s for s in [active_etf]}
+SOURCES = {s.NAME: s for s in [active_etf, futures_traders]}
 
 
 def main():

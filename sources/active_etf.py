@@ -515,7 +515,7 @@ def _fund_summary(conn, etf):
 def build_message(conn):
     """回傳 (LINE 訊息文字, 簽章 dict)。簽章為各檔最新資料日,供去重。"""
     blocks, sig = [], {}
-    for etf in FUNDS:
+    for etf in sorted(FUNDS):
         lines, curr_d = _fund_summary(conn, etf)
         if curr_d:
             sig[etf] = curr_d
