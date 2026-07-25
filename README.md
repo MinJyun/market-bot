@@ -76,6 +76,18 @@ python3 main.py fetch --source active_etf   # 只處理指定來源(可重複)
 - **不做 backfill**:僅當日預設頁提供可穩定解析的表格,歷史從今天起每日累積,
   第一次「前日變化」在第二次每日執行後出現。
 
+## 資料源:options_traders(臺指選擇權機構籌碼)
+
+期交所臺指選擇權(TXO),同時呈現兩張表:
+
+- **三大法人未平倉淨額**(外資/投信/自營):`optContractsDateExcel`,不分買賣權
+  方向(該頁本身不拆 Call/Put,與期交所公開統計口徑一致)。
+- **大額交易人前五/十大(特定法人)**:`largeTraderOptQry`,分買權(Call)、
+  賣權(Put)分別呈現買方/賣方部位(方向意義相反,不併成單一淨部位)。
+
+皆需 `curl_cffi` 破 bot 防護。**不做 backfill**(理由同 futures_traders:大額
+交易人僅當日預設頁可穩定解析),歷史從今天起每日累積。
+
 ## 資料源:inst_spot(三大法人現貨買賣超)
 
 TWSE「三大法人買賣金額統計表」(BFI82U):外資/投信/自營每日在上市現貨市場的
