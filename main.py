@@ -19,9 +19,10 @@ from pathlib import Path
 
 from core import notify as notifier
 from core import store
-from sources import active_etf, futures_traders, options_traders
+from sources import active_etf, futures_traders, inst_spot, options_traders
 
-SOURCES = {s.NAME: s for s in [active_etf, futures_traders, options_traders]}
+SOURCES = {s.NAME: s for s in
+           [active_etf, futures_traders, options_traders, inst_spot]}
 REPORTS = Path(__file__).parent / "reports"
 
 

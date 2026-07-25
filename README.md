@@ -76,6 +76,19 @@ python3 main.py fetch --source active_etf   # 只處理指定來源(可重複)
 - **不做 backfill**:僅當日預設頁提供可穩定解析的表格,歷史從今天起每日累積,
   第一次「前日變化」在第二次每日執行後出現。
 
+## 資料源:inst_spot(三大法人現貨買賣超)
+
+TWSE「三大法人買賣金額統計表」(BFI82U):外資/投信/自營每日在上市現貨市場的
+買賣超金額(正=買超、負=賣超)。與期貨外資淨部位互補——現貨買+期貨空常是避險,
+現貨賣+期貨空才是真看空。TWSE 開放 JSON、無 bot 防護,可回補歷史。
+
+## 每日彙整與用量
+
+- `main.py` 每次 `notify`/`daily` 會寫 `reports/<本機當天日期>/daily.md`,收錄當天
+  各來源的訊息內容,本機留存。
+- 每次 `notify`/`daily` 結尾印 `[quota] 本月已通知 X / 200 封 LINE`(查 LINE 實際
+  額度),避免超過免費 200 封/月。
+
 ## LINE 推播設定
 
 `line_config.json`(gitignore),token 兩種擇一,並指定推播目標:
