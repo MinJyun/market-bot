@@ -21,13 +21,13 @@ from pathlib import Path
 from core import notify as notifier
 from core import store
 from sources import (active_etf, futures_traders, inst_spot, inst_stock,
-                     margin, options_traders, pc_ratio)
+                     margin, market_index, options_traders, pc_ratio)
 
 # (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
 GROUPS = [
     ("etf", "主動ETF持股", [active_etf]),
-    ("chips", "法人籌碼", [inst_spot, inst_stock, margin, futures_traders,
-                          options_traders, pc_ratio]),
+    ("chips", "法人籌碼", [market_index, inst_spot, inst_stock, margin,
+                          futures_traders, options_traders, pc_ratio]),
 ]
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 REPORTS = Path(__file__).parent / "reports"
