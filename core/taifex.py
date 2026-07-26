@@ -62,6 +62,34 @@ def parse_inst(html):
     return out
 
 
+def parse_inst_cp(html):
+    """解析三大法人「選擇權買賣權分計」頁,回傳 {商品: {權別: {身份: 淨口}}}。
+
+    結構同 parse_inst,多一層「買權/賣權」欄(同樣用 rowspan 省略);
+    取「未平倉餘額-買賣差額-口數」(身份別後第 11 個數字欄)。
+    """
+    def cells(tr):
+        return [re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", c))
+                for c in re.split(r"(?i)<t[dh][^>]*>", tr)[1:]]
+
+    out, contract, cp = {}, None, None
+    for tr in re.split(r"(?i)<tr[^>]*>", html)[1:]:
+        cs = [c for c in cells(tr) if c != ""]
+        if len(cs) >= 16 and re.match(r"^\d+$", cs[0]) and cs[3] in (
+                "自營商", "投信", "外資"):
+            contract, cp, who, nums = cs[1], cs[2], cs[3], cs[4:]
+        elif len(cs) >= 14 and cs[0] in ("買權", "賣權") and cs[1] in (
+                "自營商", "投信", "外資"):
+            cp, who, nums = cs[0], cs[1], cs[2:]
+        elif len(cs) >= 13 and cs[0] in ("自營商", "投信", "外資"):
+            who, nums = cs[0], cs[1:]
+        else:
+            continue
+        if contract and cp:
+            out.setdefault(contract, {}).setdefault(cp, {})[who] = to_int(nums[10])
+    return out
+
+
 def parse_large_trader(html, name):
     """大額交易人頁中,契約 name 的「所有契約」列部位;找不到回 None。
 

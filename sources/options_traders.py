@@ -3,7 +3,9 @@
 追蹤臺指選擇權,一則訊息同時呈現:
   1. 三大法人(外資/投信/自營)未平倉「多空淨額」—— 臺指選擇權整體,不分買賣權
      方向(該頁未依 Call/Put 拆分,與期交所公開統計口徑一致)。
-  2. 買權(Call)、賣權(Put)「所有契約」列的前五大/前十大交易人(特定法人)
+  2. 三大法人「買賣權分計」—— 同上但依買權(Call)/賣權(Put)拆分的未平倉
+     淨口數(外資買 Put 避險 vs 買 Call 追多的主要判讀)。
+  3. 買權(Call)、賣權(Put)「所有契約」列的前五大/前十大交易人(特定法人)
      買方、賣方部位。Call/Put 方向意義相反(買 Call 偏多、買 Put 偏空/避險),
      故不併成單一淨部位,分別呈現大戶在兩邊的買賣口數。
 
@@ -18,6 +20,7 @@ from core import store, taifex
 NAME = "options_traders"
 LT_URL = "https://www.taifex.com.tw/cht/3/largeTraderOptQry"      # 大額交易人
 INST_URL = "https://www.taifex.com.tw/cht/3/optContractsDateExcel"  # 三大法人
+CP_URL = "https://www.taifex.com.tw/cht/3/callsAndPutsDateExcel"  # 買賣權分計
 
 # name_a 格子純文字(去空白)→ 顯示名
 CONTRACTS = {
@@ -42,6 +45,13 @@ CREATE TABLE IF NOT EXISTS options_inst (
     foreign_net REAL, trust_net REAL, dealer_net REAL,          -- 未平倉多空淨額(口)
     fetched_at TEXT,
     PRIMARY KEY (contract, data_date)
+);
+CREATE TABLE IF NOT EXISTS options_inst_cp (
+    cp         TEXT NOT NULL,      -- 買權 / 賣權
+    data_date  TEXT NOT NULL,
+    foreign_net REAL, trust_net REAL, dealer_net REAL,          -- 未平倉淨口數
+    fetched_at TEXT,
+    PRIMARY KEY (cp, data_date)
 );
 """
 
@@ -92,7 +102,26 @@ def fetch(conn):
     except Exception as e:
         fails.append("options_inst")
         print(f"[fetch] options_traders 三大法人: 失敗 — {e}")
-    return ["options_traders"] if len(fails) == 2 else []
+    # 3) 三大法人買賣權分計
+    try:
+        html = taifex.get(CP_URL)
+        dd = taifex.inst_date(html)
+        cp = taifex.parse_inst_cp(html).get(INST_CONTRACT) or {}
+        if not dd or not cp:
+            raise RuntimeError("買賣權分計頁解析失敗")
+        store.save_raw(NAME, dd, "callsAndPuts", "html", html.encode("utf-8"))
+        now = store.now()
+        with conn:
+            for side, who in cp.items():
+                conn.execute(
+                    "INSERT OR REPLACE INTO options_inst_cp VALUES (?,?,?,?,?,?)",
+                    (side, dd, who.get("外資", 0), who.get("投信", 0),
+                     who.get("自營商", 0), now))
+        print(f"[fetch] options_traders 買賣權分計: 資料日 {dd}")
+    except Exception as e:
+        fails.append("options_inst_cp")
+        print(f"[fetch] options_traders 買賣權分計: 失敗 — {e}")
+    return ["options_traders"] if len(fails) == 3 else []
 
 
 # ================================================================ LINE 訊息
@@ -132,6 +161,17 @@ def build_message(conn):
         fchg = f"（前日{ic[0] - ip[0]:+,.0f}）" if ip else ""
         lines.append(f"三大法人淨(不分買賣權):外資{ic[0]:+,.0f}{fchg} "
                      f"投信{ic[1]:+,.0f} 自營{ic[2]:+,.0f}")
+    cpdd = conn.execute(
+        "SELECT MAX(data_date) FROM options_inst_cp").fetchone()[0]
+    if cpdd:
+        cps = {r[0]: r[1:] for r in conn.execute(
+            "SELECT cp, foreign_net, trust_net, dealer_net "
+            "FROM options_inst_cp WHERE data_date=?", (cpdd,))}
+        for side, label in (("買權", "Call"), ("賣權", "Put")):
+            if side in cps:
+                fo, tr, de = cps[side]
+                lines.append(f"　{label}淨OI:外資{fo:+,.0f} 投信{tr:+,.0f} "
+                             f"自營{de:+,.0f}")
     lines.append("(所有契約·前五大/前十大特定法人)")
     for disp in CONTRACTS.values():
         r = row(curr, disp)
@@ -142,4 +182,4 @@ def build_message(conn):
         lines.append(f"　前五大 買{b5:,.0f} 賣{s5:,.0f}")
         lines.append(f"　前十大 買{b10:,.0f}{chg(b10, disp, 1)} "
                      f"賣{s10:,.0f}{chg(s10, disp, 3)}")
-    return "\n".join(lines), {"date": curr, "inst": icurr}
+    return "\n".join(lines), {"date": curr, "inst": icurr, "cp": cpdd}
