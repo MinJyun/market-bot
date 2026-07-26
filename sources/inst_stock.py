@@ -15,16 +15,16 @@ TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
 """
 import re
-from datetime import date, datetime, timedelta
+from datetime import date
 
 import requests
 
 from core import store
+from core.twse import UA, backfill_days, fetch_recent, iso, to_int
 from sources import active_etf
 
 NAME = "inst_stock"
 URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
-UA = {"User-Agent": "Mozilla/5.0"}
 STOCK_RE = re.compile(r"^(?!00)\d{4}$")
 
 SCHEMA = """
@@ -43,11 +43,6 @@ def init(conn):
     conn.executescript(SCHEMA)
 
 
-def _int(s):
-    s = str(s).replace(",", "").strip()
-    return int(s) if s.lstrip("-").isdigit() else 0
-
-
 def _fetch_day(d: date):
     """回傳 (data_date, {code: (name,外資淨,投信淨,自營淨,合計淨)}, 原始 bytes) 或 None。"""
     r = requests.get(URL, params={"date": f"{d:%Y%m%d}", "selectType": "ALL",
@@ -61,78 +56,39 @@ def _fetch_day(d: date):
         code = row[0]
         if not STOCK_RE.match(code):
             continue
-        rows[code] = (row[1].strip(), _int(row[4]) + _int(row[7]),
-                      _int(row[10]), _int(row[11]), _int(row[18]))
-    dd = j.get("date", f"{d:%Y%m%d}")
-    return f"{dd[:4]}-{dd[4:6]}-{dd[6:8]}", rows, r.content
+        rows[code] = (row[1].strip(), to_int(row[4]) + to_int(row[7]),
+                      to_int(row[10]), to_int(row[11]), to_int(row[18]))
+    return iso(j.get("date", f"{d:%Y%m%d}")), rows, r.content
 
 
-def _save(conn, dd, rows, raw):
+def _save(conn, got):
+    dd, rows, raw = got
     store.save_raw(NAME, dd, "T86", "json", raw)
-    now = datetime.now().isoformat(timespec="seconds")
+    now = store.now()
     with conn:
         conn.execute("DELETE FROM inst_stock WHERE data_date=?", (dd,))
         conn.executemany(
             "INSERT INTO inst_stock VALUES (?,?,?,?,?,?,?,?)",
             [(dd, code, name, fo, tr, de, to, now)
              for code, (name, fo, tr, de, to) in rows.items()])
+    return f",{len(rows)} 檔個股"
 
 
 def fetch(conn):
-    init(conn)
-    for i in range(0, 6):  # 從今天往回找最近一個有資料的交易日
-        d = date.today() - timedelta(days=i)
-        try:
-            got = _fetch_day(d)
-        except Exception as e:
-            print(f"[fetch] inst_stock: 失敗 — {e}")
-            return ["inst_stock"]
-        if got:
-            dd, rows, raw = got
-            _save(conn, dd, rows, raw)
-            print(f"[fetch] inst_stock: 資料日 {dd},{len(rows)} 檔個股")
-            return []
-    print("[fetch] inst_stock: 近 6 日查無資料")
-    return ["inst_stock"]
+    return fetch_recent(conn, NAME, _fetch_day, _save)
 
 
 def backfill(conn, days):
-    init(conn)
-    for i in range(1, days + 1):
-        d = date.today() - timedelta(days=i)
-        if d.weekday() >= 5:
-            continue
-        try:
-            got = _fetch_day(d)
-            if not got:
-                continue
-            dd, rows, raw = got
-            _save(conn, dd, rows, raw)
-            print(f"[backfill] inst_stock {dd}")
-        except Exception as e:
-            print(f"[backfill] inst_stock {d}: 失敗 — {e}")
+    backfill_days(conn, NAME, _fetch_day, _save, days)
 
 
 # ================================================================ LINE 訊息
-def _etf_watchlist(conn):
-    """回傳本專案主動 ETF 目前(各檔最新資料日)持股的 distinct 股票代號集合。"""
-    active_etf.init(conn)
-    codes = set()
-    for (etf,) in conn.execute("SELECT DISTINCT etf FROM holding"):
-        dd = conn.execute("SELECT MAX(data_date) FROM holding WHERE etf=?",
-                          (etf,)).fetchone()[0]
-        codes |= {r[0] for r in conn.execute(
-            "SELECT code FROM holding WHERE etf=? AND data_date=?", (etf, dd))}
-    return codes
-
-
 def _fmt(code, name, total_net):
     d = "買超" if total_net >= 0 else "賣超"
     return f"{name}({code}) {d}{abs(total_net) / 1000:,.0f}張"
 
 
 def build_message(conn):
-    init(conn)
     dd = conn.execute("SELECT MAX(data_date) FROM inst_stock").fetchone()[0]
     if not dd:
         return None, {}
@@ -145,7 +101,7 @@ def build_message(conn):
 
     lines = [f"📊 三大法人個股買賣超 {dd[5:].replace('-', '/')}"]
 
-    watch = _etf_watchlist(conn) & by_code.keys()
+    watch = active_etf.latest_holding_codes(conn) & by_code.keys()
     if watch:
         top = sorted((by_code[c] for c in watch), key=lambda r: -abs(r[2]))[:5]
         lines.append("▍ETF關注股(交叉比對主動ETF目前持股)")

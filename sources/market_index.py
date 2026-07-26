@@ -7,15 +7,15 @@ TWSE MI_INDEX(type=IND)「價格指數」表:各類指數當日收盤、漲跌�
 TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
 """
-from datetime import date, datetime, timedelta
+from datetime import date
 
 import requests
 
 from core import store
+from core.twse import UA, backfill_days, fetch_recent, iso
 
 NAME = "market_index"
 URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
-UA = {"User-Agent": "Mozilla/5.0"}
 ROW_NAME = "發行量加權股價指數"
 
 SCHEMA = """
@@ -64,54 +64,26 @@ def _fetch_day(d: date):
     pts = _num(row[3])          # 只有絕對值,方向以百分比正負判斷
     if pct < 0:
         pts = -pts
-    dd = j.get("date", f"{d:%Y%m%d}")
-    return f"{dd[:4]}-{dd[4:6]}-{dd[6:8]}", close, pts, pct, r.content
+    return iso(j.get("date", f"{d:%Y%m%d}")), close, pts, pct, r.content
 
 
-def _save(conn, dd, close, pts, pct, raw):
+def _save(conn, got):
+    dd, close, pts, pct, raw = got
     store.save_raw(NAME, dd, "MI_INDEX", "json", raw)
     with conn:
         conn.execute("INSERT OR REPLACE INTO market_index VALUES (?,?,?,?,?)",
-                     (dd, close, pts, pct, datetime.now().isoformat(timespec="seconds")))
+                     (dd, close, pts, pct, store.now()))
 
 
 def fetch(conn):
-    init(conn)
-    for i in range(0, 6):  # 從今天往回找最近一個有資料的交易日
-        d = date.today() - timedelta(days=i)
-        try:
-            got = _fetch_day(d)
-        except Exception as e:
-            print(f"[fetch] market_index: 失敗 — {e}")
-            return ["market_index"]
-        if got:
-            dd, close, pts, pct, raw = got
-            _save(conn, dd, close, pts, pct, raw)
-            print(f"[fetch] market_index: 資料日 {dd}")
-            return []
-    print("[fetch] market_index: 近 6 日查無資料")
-    return ["market_index"]
+    return fetch_recent(conn, NAME, _fetch_day, _save)
 
 
 def backfill(conn, days):
-    init(conn)
-    for i in range(1, days + 1):
-        d = date.today() - timedelta(days=i)
-        if d.weekday() >= 5:
-            continue
-        try:
-            got = _fetch_day(d)
-            if not got:
-                continue
-            dd, close, pts, pct, raw = got
-            _save(conn, dd, close, pts, pct, raw)
-            print(f"[backfill] market_index {dd}")
-        except Exception as e:
-            print(f"[backfill] market_index {d}: 失敗 — {e}")
+    backfill_days(conn, NAME, _fetch_day, _save, days)
 
 
 def build_message(conn):
-    init(conn)
     row = conn.execute(
         "SELECT data_date, close, change_pts, change_pct "
         "FROM market_index ORDER BY data_date DESC LIMIT 1").fetchone()

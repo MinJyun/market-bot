@@ -16,7 +16,6 @@ import time
 import zipfile
 from datetime import date, datetime, timedelta, timezone
 from io import BytesIO
-from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import requests
@@ -24,7 +23,6 @@ import requests
 from core import store
 
 NAME = "active_etf"
-REPORT_DIR = Path(__file__).parent.parent / "reports"
 TOP_N = 5  # LINE 訊息每檔加碼/減碼各列前幾筆,其餘彙總為一行
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -307,7 +305,7 @@ def _save(conn, snap):
         conn.execute(
             "INSERT OR REPLACE INTO fund_day VALUES (?,?,?,?,?,?)",
             (etf, dd, snap["nav"], snap["units"], snap["total_assets"],
-             datetime.now().isoformat(timespec="seconds")))
+             store.now()))
         conn.execute("DELETE FROM holding WHERE etf=? AND data_date=?", (etf, dd))
         conn.executemany(
             "INSERT INTO holding VALUES (?,?,?,?,?,?,?)",
@@ -316,7 +314,6 @@ def _save(conn, snap):
 
 
 def fetch(conn):
-    init(conn)
     failures = []
     for etf in FUNDS:
         try:
@@ -332,7 +329,6 @@ def fetch(conn):
 
 
 def backfill(conn, days):
-    init(conn)
     for etf in FUNDS:
         # 元大 API 只有最新一日;群益歷史日期行為未驗證,暫只抓最新往前累積
         if FUNDS[etf]["issuer"] in ("yuanta", "capital"):
@@ -376,6 +372,17 @@ def _recent_dates(conn, etf, n):
     return [r[0] for r in conn.execute(
         "SELECT data_date FROM fund_day WHERE etf=? "
         "ORDER BY data_date DESC LIMIT ?", (etf, n))]
+
+
+def latest_holding_codes(conn):
+    """各檔 ETF 最新資料日持股的 distinct 股票代號集合(供其他來源交叉比對)。"""
+    codes = set()
+    for (etf,) in conn.execute("SELECT DISTINCT etf FROM holding"):
+        dd = conn.execute("SELECT MAX(data_date) FROM holding WHERE etf=?",
+                          (etf,)).fetchone()[0]
+        codes |= {r[0] for r in conn.execute(
+            "SELECT code FROM holding WHERE etf=? AND data_date=?", (etf, dd))}
+    return codes
 
 
 # ================================================================ Markdown 報告
@@ -440,7 +447,6 @@ def _diff_report(conn, etf, prev_d, curr_d):
 
 
 def report(conn):
-    written = []
     for etf in FUNDS:
         dates = [r[0] for r in conn.execute(
             "SELECT data_date FROM fund_day WHERE etf=? ORDER BY data_date",
@@ -448,15 +454,17 @@ def report(conn):
         if len(dates) < 2:
             print(f"[report] {etf}: 資料不足兩天,略過")
             continue
+        written = 0
         for prev_d, curr_d in zip(dates, dates[1:]):
-            out = REPORT_DIR / curr_d
-            out.mkdir(parents=True, exist_ok=True)
-            (out / f"{etf}.md").write_text(
-                _diff_report(conn, etf, prev_d, curr_d), encoding="utf-8")
-            written.append(out / f"{etf}.md")
-        print(f"[report] {etf}: {dates[0]} ～ {dates[-1]} "
-              f"共 {len(dates) - 1} 份報告")
-    return written
+            path = store.REPORTS / curr_d / f"{etf}.md"
+            # 歷史報告不可變,寫過就跳過;最新一份總是重寫(資料可能重抓修正)
+            if path.exists() and curr_d != dates[-1]:
+                continue
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_diff_report(conn, etf, prev_d, curr_d),
+                            encoding="utf-8")
+            written += 1
+        print(f"[report] {etf}: {dates[0]} ～ {dates[-1]} 寫入 {written} 份報告")
 
 
 # ================================================================ LINE 摘要

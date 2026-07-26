@@ -1,9 +1,16 @@
-"""共用 SQLite 連線與原始檔落地。各資料源自行建表(呼叫自己的 init)。"""
+"""共用 SQLite 連線與原始檔落地。各資料源的建表(init)由 main.py 統一呼叫。"""
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).parent.parent / "data"
 DB_PATH = BASE / "market.db"
+REPORTS = Path(__file__).parent.parent / "reports"
+
+
+def now() -> str:
+    """入庫用時間戳(fetched_at)。"""
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def connect() -> sqlite3.Connection:

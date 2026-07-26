@@ -16,7 +16,6 @@ daily 會先把所有來源抓齊,才組訊息推播。
 import argparse
 import sys
 from datetime import date
-from pathlib import Path
 
 from core import notify as notifier
 from core import store
@@ -30,13 +29,12 @@ GROUPS = [
                           futures_traders, options_traders, pc_ratio]),
 ]
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
-REPORTS = Path(__file__).parent / "reports"
 
 
 def _write_daily_md(sections):
     """一天一份彙整檔 reports/<本機當天日期>/daily.md,含當天全部區塊。"""
     today = date.today().isoformat()
-    out = REPORTS / today
+    out = store.REPORTS / today
     out.mkdir(parents=True, exist_ok=True)
     body = [f"# 每日市場籌碼 {today}", ""]
     for title, text in sections:
@@ -62,6 +60,10 @@ def main():
     cfg = notifier.load_config()
     failures = []
 
+    # 統一建表:report/notify 單獨執行(或跨來源查詢)也不會缺表
+    for s in SOURCES.values():
+        s.init(conn)
+
     def active(s):
         return only is None or s.NAME in only
 
@@ -69,7 +71,8 @@ def main():
     if args.command in ("fetch", "daily"):
         for s in SOURCES.values():
             if active(s):
-                failures += [f"{s.NAME}:{x}" for x in (s.fetch(conn) or [])]
+                failures += [x if x == s.NAME else f"{s.NAME}:{x}"
+                             for x in (s.fetch(conn) or [])]
     if args.command == "backfill":
         for s in SOURCES.values():
             if active(s) and hasattr(s, "backfill"):

@@ -9,9 +9,8 @@ TWSE/TAIFEX 頁面有 bot 防護,用 curl_cffi(impersonate chrome)。
 對外契約:NAME / fetch(conn) / build_message(conn)。
 """
 import re
-from datetime import datetime
 
-from core import store
+from core import store, taifex
 
 NAME = "pc_ratio"
 URL = "https://www.taifex.com.tw/cht/3/pcRatio"
@@ -46,15 +45,13 @@ def _to_iso(d):
 
 
 def fetch(conn):
-    init(conn)
     try:
-        from curl_cffi import requests as cr
-        html = cr.get(URL, impersonate="chrome", timeout=30).text
+        html = taifex.get(URL)
         rows = ROW_RE.findall(html)
         if not rows:
             print("[fetch] pc_ratio: 頁面解析失敗,期交所可能改版")
             return ["pc_ratio"]
-        now = datetime.now().isoformat(timespec="seconds")
+        now = store.now()
         with conn:
             for d, pv, cv, vr, po, co, oir in rows:
                 conn.execute(
@@ -73,7 +70,6 @@ def fetch(conn):
 
 
 def build_message(conn):
-    init(conn)
     rows = conn.execute(
         "SELECT data_date, put_vol, call_vol, vol_ratio, put_oi, call_oi, oi_ratio "
         "FROM pc_ratio ORDER BY data_date DESC LIMIT 2").fetchall()

@@ -21,9 +21,11 @@ market-bot/
 └── line_config.json     # LINE 憑證與推播目標(gitignore,勿入版控)
 ```
 
-**資料源契約**:每個 `sources/*.py` 模組提供 `NAME`、`fetch(conn)`、
-`build_message(conn) → (文字, 簽章)`,選配 `backfill(conn, days)`、`report(conn)`。
-在 `main.py` 的 `SOURCES` 登記後即納入排程。
+**資料源契約**:每個 `sources/*.py` 模組提供 `NAME`、`init(conn)`(建表,
+由 main.py 統一呼叫)、`fetch(conn)`、`build_message(conn) → (文字, 簽章)`,
+選配 `backfill(conn, days)`、`report(conn)`。在 `main.py` 的 `SOURCES` 登記後
+即納入排程。TWSE 逐日型來源的抓取迴圈共用 `core/twse.py`;期交所頁面的抓取
+與表格解析共用 `core/taifex.py`。
 
 ## 用法
 

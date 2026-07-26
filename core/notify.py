@@ -75,7 +75,11 @@ def _load_state():
 
 
 def notify(cfg, source, text, sig, dry_run=False):
-    """推播單一來源的訊息，回傳是否實際送出。dry_run 只印不發、不受去重限制。"""
+    """推播一則訊息並回傳是否實際送出。dry_run 只印不發、不受去重限制。
+
+    source 是推播/去重 key:main.py 以 GROUPS 的群組 key 呼叫(一組多來源
+    合併一則),sig 則是 {來源名: 各自簽章} 的 dict,整包比對決定要不要重發。
+    """
     if not text:
         print(f"[notify] {source}: 無內容，跳過")
         return False

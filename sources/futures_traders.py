@@ -14,10 +14,7 @@
 不做 backfill:大額交易人僅當日預設頁提供帶語意 headers、可穩定解析的表格,
 指定歷史日期會回另一種凌亂版面;故歷史從今天起每日往前累積。
 """
-import re
-from datetime import datetime
-
-from core import store
+from core import store, taifex
 
 NAME = "futures_traders"
 LT_URL = "https://www.taifex.com.tw/cht/3/largeTraderFutQry"       # 大額交易人
@@ -54,94 +51,19 @@ def init(conn):
     conn.executescript(SCHEMA)
 
 
-def _int(s):
-    s = re.sub(r"[^\d\-]", "", s or "")
-    return int(s) if s not in ("", "-") else 0
-
-
-# ================================================================ 大額交易人
-def _cell(td):
-    """'74,926<br>(74,926)' → (全部交易人, 特定法人)。"""
-    nums = re.findall(r"-?[\d,]+", re.sub(r"<[^>]+>", "\n", td))
-    return (float(_int(nums[0])) if nums else 0.0,
-            float(_int(nums[1])) if len(nums) > 1 else 0.0)
-
-
-def _parse_lt(html, name):
-    m = re.search(r'headers="name_a"[^>]*>\s*<div[^>]*>\s*' + re.escape(name),
-                  html)
-    if not m:
-        return None
-    tstart = html.rfind("<tr", 0, m.start())
-    rs = re.search(r'rowspan="(\d+)"', html[tstart:tstart + 120])
-    n = int(rs.group(1)) if rs else 1
-    for tr in re.split(r"<tr[ >]", html[tstart:])[1:n + 1]:
-        exp = re.search(r'headers="expiry_a"[^>]*>(.*?)</td>', tr, re.S)
-        if not exp or "所有" not in re.sub(r"\s|<[^>]+>", "", exp.group(1)):
-            continue
-
-        def grab(h):
-            mm = re.search(r'headers="[^"]*' + h + r'[^"]*"[^>]*>(.*?)</td>',
-                           tr, re.S)
-            return _cell(mm.group(1)) if mm else (0.0, 0.0)
-
-        b5a, b5 = grab("buyer_a_01_01")
-        b10a, b10 = grab("buyer_a_02_01")
-        s5a, s5 = grab("seller_a_01_01")
-        s10a, s10 = grab("seller_a_02_01")
-        oi_m = re.search(r'headers="position_a"[^>]*>(.*?)</td>', tr, re.S)
-        oi = float(_int(re.sub(r"<[^>]+>", "", oi_m.group(1)))) if oi_m else 0.0
-        return dict(buy5=b5, buy10=b10, sell5=s5, sell10=s10, buy5_all=b5a,
-                    buy10_all=b10a, sell5_all=s5a, sell10_all=s10a, oi=oi)
-    return None
-
-
-def _page_date(html):
-    m = re.search(r'name="queryDate"[^>]*value="(\d{4})/(\d{2})/(\d{2})"', html)
-    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
-
-
-# ================================================================ 三大法人
-def _parse_inst(html):
-    """回傳 {期交所契約名: {'外資':淨口, '投信':淨口, '自營商':淨口}}。
-
-    來源表用大寫 <TR>/<TD>;每契約三列(自營商/投信/外資),商品名稱用 rowspan;
-    取「未平倉餘額-多空淨額-口數」(身份別後第 11 個數字欄)。
-    """
-    def cells(tr):
-        return [re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", c))
-                for c in re.split(r"(?i)<t[dh][^>]*>", tr)[1:]]
-
-    out, contract = {}, None
-    for tr in re.split(r"(?i)<tr[^>]*>", html)[1:]:
-        cs = [c for c in cells(tr) if c != ""]
-        if len(cs) >= 15 and re.match(r"^\d+$", cs[0]) and cs[2] in (
-                "自營商", "投信", "外資"):
-            contract, who, nums = cs[1], cs[2], cs[3:]
-        elif len(cs) >= 13 and cs[0] in ("自營商", "投信", "外資"):
-            who, nums = cs[0], cs[1:]
-        else:
-            continue
-        if contract in CONTRACTS:
-            out.setdefault(contract, {})[who] = _int(nums[10])
-    return out
-
-
 # ================================================================ 抓取
 def fetch(conn):
-    init(conn)
-    from curl_cffi import requests as cr
     fails = []
     # 1) 大額交易人
     try:
-        html = cr.get(LT_URL, impersonate="chrome", timeout=30).text
-        dd = _page_date(html)
+        html = taifex.get(LT_URL)
+        dd = taifex.page_date(html)
         rows = {disp: d for name, disp in CONTRACTS.items()
-                if (d := _parse_lt(html, name))}
+                if (d := taifex.parse_large_trader(html, name))}
         if not dd or not rows:
             raise RuntimeError("大額交易人頁解析失敗")
         store.save_raw(NAME, dd, "largeTraderFut", "html", html.encode("utf-8"))
-        now = datetime.now().isoformat(timespec="seconds")
+        now = store.now()
         with conn:
             for disp, d in rows.items():
                 conn.execute(
@@ -156,13 +78,14 @@ def fetch(conn):
         print(f"[fetch] futures_traders 大額: 失敗 — {e}")
     # 2) 三大法人
     try:
-        html = cr.get(INST_URL, impersonate="chrome", timeout=30).text
-        dd = _inst_date(html)
-        inst = _parse_inst(html)
+        html = taifex.get(INST_URL)
+        dd = taifex.inst_date(html)
+        inst = {n: w for n, w in taifex.parse_inst(html).items()
+                if n in CONTRACTS}
         if not dd or not inst:
             raise RuntimeError("三大法人頁解析失敗")
         store.save_raw(NAME, dd, "futContracts", "html", html.encode("utf-8"))
-        now = datetime.now().isoformat(timespec="seconds")
+        now = store.now()
         with conn:
             for name, who in inst.items():
                 conn.execute(
@@ -176,14 +99,8 @@ def fetch(conn):
     return ["futures_traders"] if len(fails) == 2 else []
 
 
-def _inst_date(html):
-    m = re.search(r"日期\s*(\d{4})/(\d{2})/(\d{2})", html)
-    return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
-
-
 # ================================================================ LINE 訊息
 def build_message(conn):
-    init(conn)
     dates = [r[0] for r in conn.execute(
         "SELECT DISTINCT data_date FROM futures_lt ORDER BY data_date DESC LIMIT 2")]
     idates = [r[0] for r in conn.execute(
