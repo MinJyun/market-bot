@@ -109,14 +109,28 @@ def fetch(conn):
 
 # ================================================================ Sheet 輸出
 def _chip_row(conn, dd, code, name, shares):
-    """組一列 HEADER 對應的值;無資料的欄位留空字串。"""
+    """組一列 HEADER 對應的值;無資料的欄位留空字串。
+
+    先查上市表(inst_stock/margin_stock),沒有再查上櫃表
+    (inst_otc_stock/margin_otc_stock);兩市場欄位語意與單位相同。
+    """
     inst = conn.execute(
         "SELECT foreign_net, trust_net, dealer_net, total_net "
         "FROM inst_stock WHERE data_date=? AND code=?", (dd, code)).fetchone()
+    if not inst:
+        inst = conn.execute(
+            "SELECT foreign_net, trust_net, dealer_net, total_net "
+            "FROM inst_otc_stock WHERE data_date=? AND code=?",
+            (dd, code)).fetchone()
     ms = conn.execute(
         "SELECT fin_prev, fin_bal, short_prev, short_bal, sbl_prev, sbl_bal "
         "FROM margin_stock WHERE data_date=? AND code=?", (dd, code)).fetchone()
-    # 兩者皆無仍寫一列空值(例:上櫃持股,TWSE 資料不涵蓋),缺口看得見
+    if not ms:
+        ms = conn.execute(
+            "SELECT fin_prev, fin_bal, short_prev, short_bal, sbl_prev, sbl_bal "
+            "FROM margin_otc_stock WHERE data_date=? AND code=?",
+            (dd, code)).fetchone()
+    # 兩者皆無仍寫一列空值,缺口看得見
 
     def lots(v):  # 股 → 張
         return round(v / 1000)
@@ -129,6 +143,39 @@ def _chip_row(conn, dd, code, name, shares):
     else:
         row += [""] * 6
     return row
+
+
+def _ensure_formulas(ss, year):
+    """「每日持股 {year}」J 欄起放 ARRAYFORMULA,同畫面帶出該年持股籌碼。
+
+    以 日期|股名 為 key VLOOKUP「持股籌碼 {year}」;只在 J1 尚未設定時寫入
+    (冪等),trade-sync 之後 append 的新列由 ARRAYFORMULA 自動帶出。
+    """
+    import gspread
+    try:
+        ws = ss.worksheet(f"{HOLD_TAB} {year}")
+    except gspread.WorksheetNotFound:
+        return
+    chip_cols = HEADER[3:]                      # 10 欄:外資買賣超(張)~借券增減
+    need = 9 + len(chip_cols)                   # A~I 9 欄 + 籌碼欄
+    if ws.col_count < need:
+        ws.add_cols(need - ws.col_count)        # 只有 9 欄時連讀 J1 都會 400
+    elif ws.acell("J1").value:
+        return
+    out = f"{OUT_TAB} {year}"
+    formulas = []
+    for i in range(len(chip_cols)):
+        c = chr(ord("D") + i)                   # 持股籌碼 tab 的 D~M 欄
+        formulas.append(
+            '=ARRAYFORMULA(IF($A$2:$A="",,IFERROR(VLOOKUP('
+            'TEXT($A$2:$A,"YYYY/MM/DD")&"|"&$C$2:$C,'
+            f"{{TEXT('{out}'!$A$2:$A,\"YYYY/MM/DD\")&\"|\"&'{out}'!$B$2:$B,"
+            f"'{out}'!${c}$2:${c}}},2,0),)))")
+    ws.update("J1", [chip_cols])
+    ws.update("J2", [formulas], value_input_option="USER_ENTERED")
+    # 新欄會繼承 I 欄(損益率)的百分比格式,改回一般數字
+    ws.format("J2:S", {"numberFormat": {"type": "NUMBER", "pattern": "#,##0"}})
+    print(f"[report] my_chips: 已在「{HOLD_TAB} {year}」J 欄設定籌碼公式")
 
 
 def report(conn):
@@ -169,6 +216,7 @@ def report(conn):
             if rows:
                 ws.append_rows(rows, value_input_option="USER_ENTERED")
                 total += len(rows)
+            _ensure_formulas(ss, year)
         print(f"[report] my_chips: 寫入 {total} 列到「{OUT_TAB}」")
     except Exception as e:
         print(f"[report] my_chips: 失敗 — {e}")

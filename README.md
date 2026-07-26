@@ -152,19 +152,21 @@ TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 交叉本專案已入庫的個股籌碼,把逐股籌碼變化 append 到**同一本試算表**的
 「持股籌碼 YYYY」tab(分年度、自動建立、同日不重寫):
 
-| 欄位 | 來源 |
-|---|---|
-| 外資/投信/自營/合計買賣超(張) | inst_stock(TWSE T86) |
-| 融資餘額與增減、融券餘額與增減(張) | margin_stock(TWSE MI_MARGN) |
-| 借券賣出餘額與增減(張) | margin_stock(TWSE TWT93U) |
+| 欄位 | 上市來源 | 上櫃來源(fallback) |
+|---|---|---|
+| 外資/投信/自營/合計買賣超(張) | inst_stock(TWSE T86) | inst_otc_stock(TPEx dailyTrade) |
+| 融資/融券餘額與增減(張) | margin_stock(TWSE MI_MARGN) | margin_otc_stock(TPEx balance) |
+| 借券賣出餘額與增減(張) | margin_stock(TWSE TWT93U) | margin_otc_stock(TPEx sbl) |
 
 - 憑證與試算表 ID 直接沿用 `../trade-sync/.env`(`GOOGLE_SERVICE_ACCOUNT_JSON`、
   `GOOGLE_SHEET_ID`),不另存一份;依賴 `gspread`。
 - fetch 匯入整份持股歷史(冪等),report 對每個有籌碼的交易日取「該日以前
   最近一天」的持股組列;tab 為純衍生資料,砍掉重跑 report 即可全量重建。
 - **個人持股不進 LINE 推播**(訊息會被轉發),`build_message` 恆回 None。
-- **上櫃持股**(如台半、台燿)TWSE 資料不涵蓋,籌碼欄留空——之後可加 TPEx
-  逐股來源補上。
+- 另在「每日持股 YYYY」的 J 欄之後放 ARRAYFORMULA(以 日期|股名 VLOOKUP
+  持股籌碼 tab),同一畫面看帳務與籌碼;公式由 report 冪等維護(跨年自動
+  對新 tab 補設),trade-sync append 的新列會自動帶出(已用複本實測不影響
+  其 append 落點)。J~S 欄需設一般數字格式,否則會繼承 I 欄的百分比格式。
 - 排程相依:trade-sync 16:05 寫持股快照,本專案 18:00 daily 讀,同日資料齊。
 
 ## 資料源:pc_ratio(選擇權 Put/Call Ratio)
