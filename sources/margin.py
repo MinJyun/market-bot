@@ -8,6 +8,9 @@
 - TWT93U「融券借券賣出餘額」:逐股彙總全市場借券賣出餘額(股)。外資放空
   主要走借券而非融券,補融券看不到的放空力道。
 
+除全市場彙總外,逐股資券/借券餘額也入庫(margin_stock 表,同一回應內容、
+零額外請求),供 my_chips 交叉個人持股。
+
 TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
 """
@@ -33,6 +36,15 @@ CREATE TABLE IF NOT EXISTS margin (
     amt_prev REAL, amt_bal REAL,                     -- 融資金額(仟元)
     sbl_prev REAL, sbl_bal REAL,                     -- 借券賣出餘額(股)
     fetched_at TEXT
+);
+CREATE TABLE IF NOT EXISTS margin_stock (
+    data_date  TEXT NOT NULL,
+    code       TEXT NOT NULL,
+    name       TEXT,
+    fin_prev   REAL, fin_bal   REAL,                 -- 融資餘額(張)
+    short_prev REAL, short_bal REAL,                 -- 融券餘額(張)
+    sbl_prev   REAL, sbl_bal   REAL,                 -- 借券賣出餘額(股)
+    PRIMARY KEY (data_date, code)
 );
 """
 
@@ -72,12 +84,22 @@ def _fetch_day(d: date):
         return None
     sbl = (sum(to_int(row[8]) for row in j2["data"]),
            sum(to_int(row[12]) for row in j2["data"]))
+    # 逐股:{code: [name, 融資前日, 融資今日, 融券前日, 融券今日, 借券前日, 借券今日]}
+    stocks = {}
+    detail = next((t for t in j["tables"] if "融資融券彙總" in t.get("title", "")),
+                  None)
+    for row in (detail or {}).get("data", []):
+        stocks[row[0]] = [row[1].strip(), to_int(row[5]), to_int(row[6]),
+                          to_int(row[11]), to_int(row[12]), 0, 0]
+    for row in j2["data"]:
+        entry = stocks.setdefault(row[0], [row[1].strip(), 0, 0, 0, 0, 0, 0])
+        entry[5], entry[6] = to_int(row[8]), to_int(row[12])
     dd = iso(j.get("date", f"{d:%Y%m%d}"))
-    return dd, m, s, a, sbl, (resp.content, r2.content)
+    return dd, m, s, a, sbl, stocks, (resp.content, r2.content)
 
 
 def _save(conn, got):
-    dd, m, s, a, sbl, (raw, raw2) = got
+    dd, m, s, a, sbl, stocks, (raw, raw2) = got
     store.save_raw(NAME, dd, "MI_MARGN", "json", raw)
     store.save_raw(NAME, dd, "TWT93U", "json", raw2)
     with conn:
@@ -85,6 +107,10 @@ def _save(conn, got):
             f"INSERT OR REPLACE INTO margin ({COLS}) VALUES "
             "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (dd, *m, *s, *a, *sbl, store.now()))
+        conn.execute("DELETE FROM margin_stock WHERE data_date=?", (dd,))
+        conn.executemany(
+            "INSERT INTO margin_stock VALUES (?,?,?,?,?,?,?,?,?)",
+            [(dd, code, *vals) for code, vals in stocks.items()])
 
 
 def fetch(conn):

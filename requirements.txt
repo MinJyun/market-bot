@@ -1,2 +1,4 @@
 requests
 curl_cffi   # 群益 capitalfund.com.tw 在 Imperva 後面,需模擬 Chrome TLS 指紋
+gspread     # my_chips:讀 trade-sync 持股、寫「持股籌碼」tab(Google Sheets)
+google-auth

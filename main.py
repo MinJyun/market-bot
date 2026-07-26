@@ -20,14 +20,16 @@ from datetime import date
 from core import notify as notifier
 from core import store
 from sources import (active_etf, futures_traders, fx, inst_otc, inst_spot,
-                     inst_stock, margin, market_index, options_traders,
-                     pc_ratio)
+                     inst_stock, margin, market_index, my_chips,
+                     options_traders, pc_ratio)
 
 # (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
+# my_chips 只寫 Google Sheets、不出 LINE(build_message 恆回 None)。
 GROUPS = [
     ("etf", "主動ETF持股", [active_etf]),
     ("chips", "法人籌碼", [market_index, fx, inst_spot, inst_otc, inst_stock,
-                          margin, futures_traders, options_traders, pc_ratio]),
+                          margin, futures_traders, options_traders, pc_ratio,
+                          my_chips]),
 ]
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 

@@ -143,6 +143,30 @@ TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 > 2 倍(彙總口徑不同),故融券數字一律以 MI_MARGN 為準;本專案只取 TWT93U
 > 的借券賣出欄位(個股數值已對照台積電/力積電等驗證單位為股)。
 
+除彙總外,逐股資券/借券餘額也入庫(`margin_stock` 表,同一回應、零額外
+請求),供 my_chips 交叉個人持股。
+
+## 資料源:my_chips(我的持股籌碼 → Google Sheets)
+
+從 trade-sync 專案每日寫入 Google Sheets 的「每日持股 YYYY」tab 讀持股清單,
+交叉本專案已入庫的個股籌碼,把逐股籌碼變化 append 到**同一本試算表**的
+「持股籌碼 YYYY」tab(分年度、自動建立、同日不重寫):
+
+| 欄位 | 來源 |
+|---|---|
+| 外資/投信/自營/合計買賣超(張) | inst_stock(TWSE T86) |
+| 融資餘額與增減、融券餘額與增減(張) | margin_stock(TWSE MI_MARGN) |
+| 借券賣出餘額與增減(張) | margin_stock(TWSE TWT93U) |
+
+- 憑證與試算表 ID 直接沿用 `../trade-sync/.env`(`GOOGLE_SERVICE_ACCOUNT_JSON`、
+  `GOOGLE_SHEET_ID`),不另存一份;依賴 `gspread`。
+- fetch 匯入整份持股歷史(冪等),report 對每個有籌碼的交易日取「該日以前
+  最近一天」的持股組列;tab 為純衍生資料,砍掉重跑 report 即可全量重建。
+- **個人持股不進 LINE 推播**(訊息會被轉發),`build_message` 恆回 None。
+- **上櫃持股**(如台半、台燿)TWSE 資料不涵蓋,籌碼欄留空——之後可加 TPEx
+  逐股來源補上。
+- 排程相依:trade-sync 16:05 寫持股快照,本專案 18:00 daily 讀,同日資料齊。
+
 ## 資料源:pc_ratio(選擇權 Put/Call Ratio)
 
 期交所臺指選擇權(TXO)每日賣權/買權的成交量比與未平倉量比(%)——市場情緒
