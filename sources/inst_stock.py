@@ -1,15 +1,16 @@
-"""資料源:三大法人個股買賣超(TWSE T86,依股票代號)。
+"""資料源:個股籌碼訊息(TWSE T86 入庫 + 上市/上櫃逐股排行)。
 
-TWSE「三大法人買賣超日報」(T86):不只外資,也含投信/自營,依個股呈現當日
-外資/投信/自營/合計買賣超股數。原始回應約 1.3 萬筆(含 ETF、權證、特別股),
-只保留純股票(4 碼純數字、非 00 開頭代號)入庫,約 1000 檔——00 開頭的 4 碼
-(0050、0056...)是 ETF,股票代號從未以 00 開頭。
+抓取面:TWSE「三大法人買賣超日報」(T86)依個股呈現當日外資/投信/自營/合計
+買賣超股數。原始回應約 1.3 萬筆(含 ETF、權證、特別股),只保留純股票
+(4 碼純數字、非 00 開頭代號)入庫,約 1000 檔。
 
-訊息分兩塊:
-  1. ETF 關注股:交叉比對本專案 7 檔主動 ETF 目前持股清單,顯示交集中三大
-     法人買賣超前 5 大——用來對照 ETF 經理人的加減碼是否與法人籌碼同向。
-  2. 全市場排行:純股票中三大法人買超/賣超前 5 大,與 ETF 持股無關的大盤
-     籌碼指標。
+訊息面:獨立成一則「個股籌碼」LINE(main.py 的 stocks 分組),上市/上櫃分開:
+  - 每市場列 三大法人/外資/投信 的買超前5、賣超前5,連續同向 ≥2 天標注
+    「連N買/連N賣」(投信連買常視為認養訊號)。
+  - 上櫃資料讀 inst_otc 來源入庫的 inst_otc_stock 表(跨來源讀表,兩邊
+    docstring 互相標注)。
+  - ETF 關注股:交叉比對本專案主動 ETF 目前持股(上市+上櫃),顯示交集中
+    三大法人買賣超前 5——對照 ETF 經理人加減碼是否與法人同向。
 
 TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
@@ -83,37 +84,65 @@ def backfill(conn, days):
 
 
 # ================================================================ LINE 訊息
-def _fmt(code, name, total_net):
-    d = "買超" if total_net >= 0 else "賣超"
-    return f"{name}({code}) {d}{abs(total_net) / 1000:,.0f}張"
+def _streak(conn, table, col, code, dd, cur):
+    """含當日的連續同向天數(最多回看 15 個交易日)。"""
+    days = 1
+    for (v,) in conn.execute(
+            f"SELECT {col} FROM {table} WHERE code=? AND data_date<? "
+            "ORDER BY data_date DESC LIMIT 15", (code, dd)):
+        if v and (v > 0) == (cur > 0):
+            days += 1
+        else:
+            break
+    return days
+
+
+def _market_sections(conn, label, table, dd, lines):
+    """一個市場的 三大法人/外資/投信 買賣超前5(含連N買/賣標注)。"""
+    rows = [r for r in conn.execute(
+        f"SELECT code, name, foreign_net, trust_net, total_net FROM {table} "
+        "WHERE data_date=?", (dd,)) if STOCK_RE.match(r[0])]
+
+    def fmt(r, idx, col):
+        code, name, net = r[0], r[1], r[idx]
+        d = _streak(conn, table, col, code, dd, net)
+        tag = f" 連{d}{'買' if net > 0 else '賣'}" if d >= 2 else ""
+        return f"　{name}({code}) {net / 1000:+,.0f}張{tag}"
+
+    for title, idx, col in (("三大法人", 4, "total_net"),
+                            ("外資", 2, "foreign_net"),
+                            ("投信", 3, "trust_net")):
+        ranked = sorted((r for r in rows if r[idx]), key=lambda r: -r[idx])
+        if not ranked:
+            continue
+        lines.append(f"▍{label}·{title}")
+        lines += [fmt(r, idx, col) for r in ranked[:5] if r[idx] > 0]
+        lines += [fmt(r, idx, col) for r in ranked[-5:][::-1] if r[idx] < 0]
 
 
 def build_message(conn):
     dd = conn.execute("SELECT MAX(data_date) FROM inst_stock").fetchone()[0]
     if not dd:
         return None, {}
-    all_rows = conn.execute(
-        "SELECT code, name, total_net FROM inst_stock WHERE data_date=?",
-        (dd,)).fetchall()
-    if not all_rows:
-        return None, {}
-    by_code = {r[0]: r for r in all_rows}
+    odd = conn.execute("SELECT MAX(data_date) FROM inst_otc_stock").fetchone()[0]
 
-    lines = [f"📊 三大法人個股買賣超 {dd[5:].replace('-', '/')}"]
+    lines = [f"📊 個股籌碼 {dd[5:].replace('-', '/')}"]
+    _market_sections(conn, "上市", "inst_stock", dd, lines)
+    if odd:
+        _market_sections(conn, "上櫃", "inst_otc_stock", odd, lines)
 
+    # ETF 關注股:主動 ETF 持股 ∩ 上市+上櫃法人買賣超
+    by_code = {r[0]: r for r in conn.execute(
+        "SELECT code, name, total_net FROM inst_stock WHERE data_date=?", (dd,))}
+    if odd:
+        for r in conn.execute("SELECT code, name, total_net FROM inst_otc_stock "
+                              "WHERE data_date=?", (odd,)):
+            by_code.setdefault(r[0], r)
     watch = active_etf.latest_holding_codes(conn) & by_code.keys()
     if watch:
         top = sorted((by_code[c] for c in watch), key=lambda r: -abs(r[2]))[:5]
         lines.append("▍ETF關注股(交叉比對主動ETF目前持股)")
-        for code, name, net in top:
-            lines.append(f"　{_fmt(code, name, net)}")
+        lines += [f"　{name}({code}) {net / 1000:+,.0f}張"
+                  for code, name, net in top]
 
-    ranked = sorted(all_rows, key=lambda r: -r[2])
-    lines.append("▍全市場買超前5")
-    for code, name, net in ranked[:5]:
-        lines.append(f"　{_fmt(code, name, net)}")
-    lines.append("▍全市場賣超前5")
-    for code, name, net in ranked[-5:][::-1]:
-        lines.append(f"　{_fmt(code, name, net)}")
-
-    return "\n".join(lines), {"date": dd}
+    return "\n".join(lines), {"twse": dd, "otc": odd}
