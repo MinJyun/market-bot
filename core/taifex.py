@@ -7,10 +7,20 @@ options_traders 共用;期交所改版時只需修這一份。
 import re
 
 
-def get(url):
-    """抓頁面回傳 html 文字(curl_cffi 模擬 Chrome)。"""
+def get(url, data=None):
+    """抓頁面回傳 html 文字(curl_cffi 模擬 Chrome);data 給定時改用 POST。"""
     from curl_cffi import requests as cr
-    return cr.get(url, impersonate="chrome", timeout=30).text
+    if data is None:
+        return cr.get(url, impersonate="chrome", timeout=30).text
+    return cr.post(url, data=data, impersonate="chrome", timeout=30).text
+
+
+def get_bytes(url, data=None):
+    """同 get 但回傳 bytes(CSV 下載等非 UTF-8 內容用)。"""
+    from curl_cffi import requests as cr
+    if data is None:
+        return cr.get(url, impersonate="chrome", timeout=30).content
+    return cr.post(url, data=data, impersonate="chrome", timeout=30).content
 
 
 def to_int(s):
