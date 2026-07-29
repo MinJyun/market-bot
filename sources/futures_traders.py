@@ -205,7 +205,8 @@ def backfill(conn, days):
             print(f"[backfill] futures_traders 三大法人 {dd}")
         except Exception as e:
             print(f"[backfill] futures_traders {d}: 失敗 — {e}")
-        time.sleep(0.4)
+        # 0.4s 曾觸發 Cloudflare 對此路徑的 IP 限流(擋數小時),放慢
+        time.sleep(2)
     # 結算價:futDataDown 一次最多約 30 日,分段抓
     end = date.today()
     while (date.today() - end).days < days:
