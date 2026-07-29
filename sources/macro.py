@@ -115,27 +115,34 @@ def _latest2(conn, symbol):
 
 
 def build_message(conn):
+    from datetime import datetime
+    # 只在晚間時段發(21:30 備援排程):18:00 時美股/油金等尚未更新完
+    if datetime.now().hour < 21:
+        return None, {}
     lines, sig = [], {}
 
-    def add(symbol, name, dec, suffix=""):
+    def add(symbol, name, dec, suffix="", pct=True, extra=""):
         rows = _latest2(conn, symbol)
         if not rows:
             return
         (dd, v), prev = rows[0], (rows[1][1] if len(rows) > 1 else None)
         sig[symbol] = dd
-        chg = f"（{v - prev:+,.{dec}f}）" if prev is not None else ""
+        if prev:
+            chg = (f"（{(v - prev) / prev * 100:+.2f}%{extra}）" if pct else
+                   f"（{v - prev:+,.{dec}f}{extra}）")
+        else:
+            chg = ""
         lines.append(f"{name} {v:,.{dec}f}{suffix}{chg}")
 
-    add("USDTWD", "美元/台幣", 3)
-    if lines:  # 台幣多標升貶方向
-        rows = _latest2(conn, "USDTWD")
-        if len(rows) > 1:
-            chg = rows[0][1] - rows[1][1]
-            trend = "台幣貶" if chg > 0 else ("台幣升" if chg < 0 else "持平")
-            lines[-1] = lines[-1][:-1] + f",{trend}）" if chg else lines[-1]
+    rows = _latest2(conn, "USDTWD")
+    trend = ""
+    if len(rows) > 1 and rows[0][1] != rows[1][1]:
+        trend = ",台幣貶" if rows[0][1] > rows[1][1] else ",台幣升"
+    add("USDTWD", "美元/台幣", 3, extra=trend)
     add("USDJPY", "美元/日圓", 2)
     for symbol, _, name, dec, suffix in YAHOO_SERIES:
-        add(symbol, name, dec, suffix)
+        # 美債殖利率本身是 %,漲跌用絕對值(百分點)而非 %
+        add(symbol, name, dec, suffix, pct=(symbol != "US10Y"))
     if not lines:
         return None, {}
     dd = sig.get("USDTWD") or max(sig.values())

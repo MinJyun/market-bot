@@ -25,12 +25,15 @@ from sources import (active_etf, futures_traders, inst_otc, inst_spot,
 
 # (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
 # my_chips 只寫 Google Sheets、不出 LINE(build_message 恆回 None)。
+# macro 只在 21 點後產生訊息(18:00 時美股/油金未更新),獨立一組避免
+# 21:30 備援跑時把 18:00 已發的其他組拖著重發。
 GROUPS = [
     ("etf", "主動ETF持股", [active_etf]),
-    ("chips", "法人籌碼", [market_index, macro, inst_spot, inst_otc, margin,
+    ("chips", "法人籌碼", [market_index, inst_spot, inst_otc, margin,
                           futures_traders, options_traders, pc_ratio,
                           my_chips]),
     ("stocks", "個股籌碼", [inst_stock]),
+    ("macro", "國際總經", [macro]),
 ]
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
