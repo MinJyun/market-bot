@@ -115,10 +115,7 @@ def _latest2(conn, symbol):
 
 
 def build_message(conn):
-    from datetime import datetime
-    # 只在晚間時段發(21:30 備援排程):18:00 時美股/油金等尚未更新完
-    if datetime.now().hour < 21:
-        return None, {}
+    # 所屬的 chips 組由 main.py 控制在 21 點後才推播(美股/油金更新後)
     lines, sig = [], {}
 
     def add(symbol, name, dec, suffix="", pct=True, extra=""):

@@ -15,7 +15,7 @@ daily 會先把所有來源抓齊,才組訊息推播。
 """
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime
 
 from core import notify as notifier
 from core import store
@@ -25,16 +25,16 @@ from sources import (active_etf, futures_traders, inst_otc, inst_spot,
 
 # (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
 # my_chips 只寫 Google Sheets、不出 LINE(build_message 恆回 None)。
-# macro 只在 21 點後產生訊息(18:00 時美股/油金未更新),獨立一組避免
-# 21:30 備援跑時把 18:00 已發的其他組拖著重發。
+# chips 組(含國際總經)21 點後才推播:18:00 時美股/油金尚未更新,
+# 留給 21:30 備援排程發;md 彙整照寫、dry-run 不受限。
 GROUPS = [
     ("etf", "主動ETF持股", [active_etf]),
-    ("chips", "法人籌碼", [market_index, inst_spot, inst_otc, margin,
+    ("chips", "法人籌碼", [market_index, macro, inst_spot, inst_otc, margin,
                           futures_traders, options_traders, pc_ratio,
                           my_chips]),
     ("stocks", "個股籌碼", [inst_stock]),
-    ("macro", "國際總經", [macro]),
 ]
+HOLD_UNTIL_HOUR = {"chips": 21}
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
 
@@ -108,6 +108,10 @@ def main():
             if cfg is None:
                 if args.command == "notify":
                     print("[notify] 未設定 line_config.json,跳過推播")
+            elif (not args.dry_run
+                  and datetime.now().hour < HOLD_UNTIL_HOUR.get(key, 0)):
+                print(f"[notify] {key}: {HOLD_UNTIL_HOUR[key]} 點後才推播,"
+                      "留給備援排程")
             else:
                 notifier.notify(cfg, key, combined, sig, dry_run=args.dry_run)
 
