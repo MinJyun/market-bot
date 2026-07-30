@@ -11,6 +11,11 @@
 除全市場彙總外,逐股資券/借券餘額也入庫(margin_stock 表,同一回應內容、
 零額外請求),供 my_chips 交叉個人持股。
 
+另抓 MI_INDEX(ALLBUT0999)全部個股收盤價(stock_close 表),用來估算
+**大盤融資維持率** = Σ(每檔融資餘額×收盤價) ÷ 全市場融資金額 × 100%。
+交易所不公布整戶維持率,這是媒體常用的估算口徑(上市;忽略現金增提擔保
+與當日無成交個股),趨勢參考用。低於 ~150% 常伴隨斷頭賣壓。
+
 TWSE 開放 JSON、無 bot 防護,標準 requests 即可。可回補歷史。
 對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
 """
@@ -24,6 +29,7 @@ from core.twse import UA, backfill_days, fetch_recent, iso, to_int
 NAME = "margin"
 URL = "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN"
 SBL_URL = "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
+QUOTE_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS margin (
@@ -44,6 +50,12 @@ CREATE TABLE IF NOT EXISTS margin_stock (
     fin_prev   REAL, fin_bal   REAL,                 -- 融資餘額(張)
     short_prev REAL, short_bal REAL,                 -- 融券餘額(張)
     sbl_prev   REAL, sbl_bal   REAL,                 -- 借券賣出餘額(股)
+    PRIMARY KEY (data_date, code)
+);
+CREATE TABLE IF NOT EXISTS stock_close (
+    data_date  TEXT NOT NULL,
+    code       TEXT NOT NULL,
+    close      REAL,                                 -- 收盤價(上市)
     PRIMARY KEY (data_date, code)
 );
 """
@@ -84,6 +96,20 @@ def _fetch_day(d: date):
         return None
     sbl = (sum(to_int(row[8]) for row in j2["data"]),
            sum(to_int(row[12]) for row in j2["data"]))
+    # 全部個股收盤價(維持率估算用);當日無成交(收盤價 "--")跳過
+    r3 = requests.get(QUOTE_URL, params={"date": f"{d:%Y%m%d}",
+                                         "type": "ALLBUT0999",
+                                         "response": "json"},
+                      headers=UA, timeout=60)
+    r3.raise_for_status()
+    quote = next((t for t in r3.json().get("tables", [])
+                  if "每日收盤行情" in (t.get("title") or "")), None)
+    closes = {}
+    for row in (quote or {}).get("data", []):
+        try:
+            closes[row[0].strip()] = float(str(row[8]).replace(",", ""))
+        except ValueError:
+            continue
     # 逐股:{code: [name, 融資前日, 融資今日, 融券前日, 融券今日, 借券前日, 借券今日]}
     stocks = {}
     detail = next((t for t in j["tables"] if "融資融券彙總" in t.get("title", "")),
@@ -95,13 +121,14 @@ def _fetch_day(d: date):
         entry = stocks.setdefault(row[0], [row[1].strip(), 0, 0, 0, 0, 0, 0])
         entry[5], entry[6] = to_int(row[8]), to_int(row[12])
     dd = iso(j.get("date", f"{d:%Y%m%d}"))
-    return dd, m, s, a, sbl, stocks, (resp.content, r2.content)
+    return dd, m, s, a, sbl, stocks, closes, (resp.content, r2.content, r3.content)
 
 
 def _save(conn, got):
-    dd, m, s, a, sbl, stocks, (raw, raw2) = got
+    dd, m, s, a, sbl, stocks, closes, (raw, raw2, raw3) = got
     store.save_raw(NAME, dd, "MI_MARGN", "json", raw)
     store.save_raw(NAME, dd, "TWT93U", "json", raw2)
+    store.save_raw(NAME, dd, "MI_INDEX_ALL", "json", raw3)
     with conn:
         conn.execute(
             f"INSERT OR REPLACE INTO margin ({COLS}) VALUES "
@@ -111,6 +138,9 @@ def _save(conn, got):
         conn.executemany(
             "INSERT INTO margin_stock VALUES (?,?,?,?,?,?,?,?,?)",
             [(dd, code, *vals) for code, vals in stocks.items()])
+        conn.execute("DELETE FROM stock_close WHERE data_date=?", (dd,))
+        conn.executemany("INSERT INTO stock_close VALUES (?,?,?)",
+                         [(dd, code, c) for code, c in closes.items()])
 
 
 def fetch(conn):
@@ -119,6 +149,19 @@ def fetch(conn):
 
 def backfill(conn, days):
     backfill_days(conn, NAME, _fetch_day, _save, days)
+
+
+def _maintenance_ratio(conn, dd):
+    """估算大盤融資維持率(%):Σ(融資餘額×收盤價) / 融資金額;缺資料回 None。"""
+    collateral = conn.execute(
+        "SELECT SUM(ms.fin_bal * 1000 * sc.close) FROM margin_stock ms "
+        "JOIN stock_close sc ON sc.data_date = ms.data_date AND sc.code = ms.code "
+        "WHERE ms.data_date = ?", (dd,)).fetchone()[0]
+    amt = conn.execute("SELECT amt_bal FROM margin WHERE data_date=?",
+                       (dd,)).fetchone()
+    if not collateral or not amt or not amt[0]:
+        return None
+    return collateral / (amt[0] * 1000) * 100
 
 
 def build_message(conn):
@@ -140,6 +183,14 @@ def build_message(conn):
     if abal:  # 仟元 → 億
         lines.append(f"融資金額 {abal / 1e5:,.1f}億"
                      f"（較前日{(abal - aprev) / 1e5:+,.1f}億）")
+    ratio = _maintenance_ratio(conn, dd)
+    if ratio:
+        prev_dd = conn.execute(
+            "SELECT MAX(data_date) FROM margin WHERE data_date < ?",
+            (dd,)).fetchone()[0]
+        pratio = _maintenance_ratio(conn, prev_dd) if prev_dd else None
+        chg = f"（較前日{ratio - pratio:+.1f}）" if pratio else ""
+        lines.append(f"融資維持率(估) {ratio:.1f}%{chg}")
     lines.append(line("融券餘額", sbal, sprev))
     if bbal:  # 股 → 張
         lines.append(line("借券賣出餘額", bbal / 1000, bprev / 1000))
