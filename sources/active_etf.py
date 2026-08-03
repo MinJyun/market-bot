@@ -422,6 +422,10 @@ def _diff_report(conn, etf, prev_d, curr_d):
              f"（{du:+.2f}%，現金申贖，不直接反映在持股）")
     L.append(f"- 淨值：{fp['nav']} → {fc['nav']}")
     L.append(f"- 持股檔數：{len(prev)} → {len(curr)}")
+    for h in curr.values():   # 期貨曝險現況(名目本金,口)
+        if "期貨" in (h["name"] or ""):
+            L.append(f"- 期貨部位：{h['name']} {h['shares']:,.0f} 口"
+                     f"（名目 {_money(h['amount'])}，佔淨值 {h['weight']:.2f}%）")
     L.append("")
 
     def money(v):
