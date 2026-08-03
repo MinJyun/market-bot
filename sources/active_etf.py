@@ -121,7 +121,9 @@ def _fetch_uni(etf, target=None):
     data_date = _uni_date(pcf["NAV"]["TranDate"])
     holdings = []
     for asset in d["asset"]:
-        if asset["AssetCode"] != "ST" or not asset["Details"]:
+        # ST=股票;GD=期貨(名目本金),Share 為口數、Amount 為名目金額,
+        # 一併入庫讓差異報告涵蓋期貨增減倉(顯示單位靠名稱含「期貨」判斷)
+        if asset["AssetCode"] not in ("ST", "GD") or not asset["Details"]:
             continue
         for row in asset["Details"]:
             holdings.append({
@@ -472,6 +474,10 @@ def _money(v):
     return f"{v/1e8:,.1f}億" if abs(v) >= 1e8 else f"{v/1e4:,.0f}萬"
 
 
+def _unit(name):
+    return "口" if "期貨" in (name or "") else "股"
+
+
 def _fund_summary(conn, etf):
     dates = _recent_dates(conn, etf, 2)
     if len(dates) < 2:
@@ -487,10 +493,11 @@ def _fund_summary(conn, etf):
     new, gone, inc, dec = [], [], [], []
     for code in set(curr) | set(prev):
         c, p = curr.get(code), prev.get(code)
+        u = _unit((c or p)["name"])
         if p is None:
-            new.append((c["amount"] or 0, f"🆕 {c['name']} {c['shares']:,.0f}股"
+            new.append((c["amount"] or 0, f"🆕 {c['name']} {c['shares']:,.0f}{u}"
                         f"({_money(c['amount'])})" if c["amount"] else
-                        f"🆕 {c['name']} {c['shares']:,.0f}股"))
+                        f"🆕 {c['name']} {c['shares']:,.0f}{u}"))
         elif c is None:
             est = price(code) * p["shares"]
             gone.append((est, f"❌ 清倉 {p['name']}({_money(est)})"))
@@ -498,15 +505,18 @@ def _fund_summary(conn, etf):
             d = c["shares"] - p["shares"]
             est = price(code) * d
             (inc if d > 0 else dec).append(
-                (abs(est), f"{c['name']} {d:+,.0f}股({_money(est)})"))
+                (abs(est), f"{c['name']} {d:+,.0f}{u}({_money(est)})"))
 
     du = ((fc["units"] - fp["units"]) / fp["units"] * 100
           if fc["units"] and fp["units"] else 0)
     head = (f"▍{etf} {FUNDS[etf]['name']}（{prev_d[5:]}→{curr_d[5:]}，"
             f"申贖{du:+.1f}%）")
+    # 期貨曝險常駐顯示(名目本金佔淨值),不只在增減倉時出現
+    fut = [f"⚡ {h['name']} {h['shares']:,.0f}口(佔淨值{h['weight']:.1f}%)"
+           for h in curr.values() if "期貨" in (h["name"] or "")]
     if not (new or gone or inc or dec):
-        return [head, "持股無變動"], curr_d
-    lines = [head]
+        return [head] + fut + ["持股無變動"], curr_d
+    lines = [head] + fut
     lines += [t for _, t in sorted(new, key=lambda x: -x[0])]
     lines += [t for _, t in sorted(gone, key=lambda x: -x[0])]
     for label, items in (("➕ 加碼", inc), ("➖ 減碼", dec)):
