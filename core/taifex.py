@@ -98,6 +98,32 @@ def parse_inst_flow(html):
     return out
 
 
+def parse_inst_flow_cp(html):
+    """解析買賣權分計的「交易口數與契約金額」表(如選擇權夜盤頁),
+    回傳 {商品名: {權別: {身份: 交易買賣淨額口數}}}。結構同 parse_inst_flow
+    多一層「買權/賣權」rowspan。"""
+    def cells(tr):
+        return [re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", c))
+                for c in re.split(r"(?i)<t[dh][^>]*>", tr)[1:]]
+
+    out, contract, cp = {}, None, None
+    for tr in re.split(r"(?i)<tr[^>]*>", html)[1:]:
+        cs = [c for c in cells(tr) if c != ""]
+        if len(cs) >= 10 and re.match(r"^\d+$", cs[0]) and cs[3] in (
+                "自營商", "投信", "外資"):
+            contract, cp, who, nums = cs[1], cs[2], cs[3], cs[4:]
+        elif len(cs) >= 8 and cs[0] in ("買權", "賣權") and cs[1] in (
+                "自營商", "投信", "外資"):
+            cp, who, nums = cs[0], cs[1], cs[2:]
+        elif len(cs) >= 7 and cs[0] in ("自營商", "投信", "外資"):
+            who, nums = cs[0], cs[1:]
+        else:
+            continue
+        if contract and cp:
+            out.setdefault(contract, {}).setdefault(cp, {})[who] = to_int(nums[4])
+    return out
+
+
 def parse_inst_cp(html):
     """解析三大法人「選擇權買賣權分計」頁,回傳 {商品: {權別: {身份: 淨口}}}。
 

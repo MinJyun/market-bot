@@ -98,9 +98,12 @@ fetch 順帶回補當月;backfill 依月往前。TWSE 開放 JSON、無 bot 防�
 「今日盤後」列即凌晨剛收盤的夜盤,漲跌基準為前一日結算價。兩塊資料:
 
 - **行情**:futDataDown CSV 取近月(成交量最大月份)開高低收/漲跌/成交量。
-- **三大法人**:夜盤專頁 `futContractsDateAhExcel` 的臺股期貨交易買賣淨額
-  (口)。夜盤只公布 flow、無未平倉(部位為日級口徑,在 futures_traders);
-  公布時間約早上 8 點,排程定 08:10 避免搶跑。
+- **期貨三大法人**:夜盤專頁 `futContractsDateAhExcel`,台指/小台/微台
+  各自的交易買賣淨額(口),訊息另算「合併」= 台指 + 0.25×小台 + 0.05×微台
+  (依契約規模折算)。夜盤只公布 flow、無未平倉(部位為日級口徑,在
+  futures_traders);公布時間約早上 8 點,排程定 08:10 避免搶跑。
+- **選擇權三大法人**:`callsAndPutsDateAhExcel`,臺指選擇權 Call/Put
+  的夜盤交易淨額(口)。
 
 反映歐美盤時段的台股預期。皆 curl_cffi,fetch 順帶回補近幾日。
 
