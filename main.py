@@ -19,22 +19,23 @@ from datetime import date, datetime
 
 from core import notify as notifier
 from core import store
-from sources import (active_etf, futures_traders, inst_otc, inst_spot,
-                     inst_stock, macro, margin, market_index, my_chips,
-                     options_traders, pc_ratio)
+from sources import (active_etf, fut_night, futures_traders, inst_otc,
+                     inst_spot, inst_stock, macro, margin, market_index,
+                     my_chips, options_traders, pc_ratio)
 
 # (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
 # my_chips 只寫 Google Sheets、不出 LINE(build_message 恆回 None)。
-# chips 組(含國際總經)21 點後才推播:18:00 時美股/油金尚未更新,
-# 留給 21:30 備援排程發;md 彙整照寫、dry-run 不受限。
 GROUPS = [
     ("etf", "主動ETF持股", [active_etf]),
-    ("chips", "法人籌碼", [market_index, macro, inst_spot, inst_otc, margin,
+    ("chips", "法人籌碼", [market_index, inst_spot, inst_otc, margin,
                           futures_traders, options_traders, pc_ratio,
                           my_chips]),
     ("stocks", "個股籌碼", [inst_stock]),
+    ("morning", "國際總經與夜盤", [macro, fut_night]),
 ]
-HOLD_UNTIL_HOUR = {"chips": 21}
+# 各組實發時窗 [起, 迄):morning 早上 8 點排程發(美股收盤+夜盤剛結束),
+# chips 21:30 備援排程發;其餘不限。md 彙整照寫、dry-run 不受限。
+SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24)}
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
 
@@ -108,10 +109,11 @@ def main():
             if cfg is None:
                 if args.command == "notify":
                     print("[notify] 未設定 line_config.json,跳過推播")
-            elif (not args.dry_run
-                  and datetime.now().hour < HOLD_UNTIL_HOUR.get(key, 0)):
-                print(f"[notify] {key}: {HOLD_UNTIL_HOUR[key]} 點後才推播,"
-                      "留給備援排程")
+            elif (not args.dry_run and key in SEND_WINDOW
+                  and not (SEND_WINDOW[key][0] <= datetime.now().hour
+                           < SEND_WINDOW[key][1])):
+                lo, hi = SEND_WINDOW[key]
+                print(f"[notify] {key}: 只在 {lo}~{hi} 點間推播,本輪保留")
             else:
                 notifier.notify(cfg, key, combined, sig, dry_run=args.dry_run)
 

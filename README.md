@@ -39,7 +39,9 @@ python3 main.py fetch --source active_etf   # 只處理指定來源(可重複)
 ```
 
 排程:`~/Library/LaunchAgents/com.minjyun.market-bot.plist`,週一至週五
-18:00 與 21:30(備援)各跑一次 `daily.sh`,手動觸發:
+08:00、18:00、21:30 各跑一次 `daily.sh`;各 LINE 組有發送時窗(main.py
+`SEND_WINDOW`):morning(國際總經+夜盤)只在 6~12 點發、chips(法人籌碼)
+只在 21~24 點發,其餘不限;去重讓多輪執行不重發。手動觸發:
 `launchctl kickstart gui/$(id -u)/com.minjyun.market-bot`。
 
 ## 資料源:active_etf(台股主動式 ETF)
@@ -86,11 +88,16 @@ fetch 順帶回補當月;backfill 依月往前。TWSE 開放 JSON、無 bot 防�
 | 美元/台幣、美元/日圓 | 期交所每日外幣參考匯率(curl_cffi,預設頁含兩月歷史) |
 | 美元指數、WTI原油、黃金、美債10Y、VIX、費半、S&P500 | Yahoo Finance chart API(免金鑰,每次抓近一月日線) |
 
-美股相關數值為台北時間清晨的美國收盤,與台股資料日相差一天屬正常(訊息
-標注)。漲跌以 % 呈現(美債 10Y 例外,用絕對百分點)。隸屬「法人籌碼」訊息;
-該組整則由 main.py 的 `HOLD_UNTIL_HOUR` 控制 **21 點後才推播**(18:00 時
-美股/油金尚未更新,留給 21:30 備援排程),md 彙整照寫、dry-run 不受限。
-fetch 即回補,不需 backfill。前身為只有美元/台幣的 fx 來源。
+美股相關數值為台北時間清晨的美國收盤(訊息標注)。漲跌以 % 呈現(美債
+10Y 例外,用絕對百分點)。與 fut_night 同屬 morning 組,**早上 8 點排程推播**
+(美股剛收、夜盤剛結束)。fetch 即回補,不需 backfill。前身為 fx 來源。
+
+## 資料源:fut_night(台指期夜盤)
+
+期交所盤後交易時段(15:00 ~ 次日 05:00),成交歸入**次一交易日**——早上抓
+「今日盤後」列即凌晨剛收盤的夜盤,漲跌基準為前一日結算價。取近月(成交量
+最大月份)的開高低收/漲跌/成交量,反映歐美盤時段的台股預期。資料同
+futDataDown CSV(curl_cffi),fetch 順帶回補近幾日。
 
 ## 資料源:inst_otc(三大法人上櫃買賣超)
 
