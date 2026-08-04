@@ -72,6 +72,32 @@ def parse_inst(html):
     return out
 
 
+def parse_inst_flow(html):
+    """解析三大法人「交易口數與契約金額」表(如夜盤頁,無未平倉欄),
+    回傳 {商品名: {身份: 交易買賣淨額口數}}。
+
+    列結構:序號,商品,身份,多方口數,多方金額,空方口數,空方金額,
+    淨額口數,淨額金額;商品名用 rowspan 省略於延續列。
+    """
+    def cells(tr):
+        return [re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", c))
+                for c in re.split(r"(?i)<t[dh][^>]*>", tr)[1:]]
+
+    out, contract = {}, None
+    for tr in re.split(r"(?i)<tr[^>]*>", html)[1:]:
+        cs = [c for c in cells(tr) if c != ""]
+        if len(cs) >= 9 and re.match(r"^\d+$", cs[0]) and cs[2] in (
+                "自營商", "投信", "外資"):
+            contract, who, nums = cs[1], cs[2], cs[3:]
+        elif len(cs) >= 7 and cs[0] in ("自營商", "投信", "外資"):
+            who, nums = cs[0], cs[1:]
+        else:
+            continue
+        if contract:
+            out.setdefault(contract, {})[who] = to_int(nums[4])
+    return out
+
+
 def parse_inst_cp(html):
     """解析三大法人「選擇權買賣權分計」頁,回傳 {商品: {權別: {身份: 淨口}}}。
 
