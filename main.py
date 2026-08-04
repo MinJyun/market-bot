@@ -115,7 +115,16 @@ def main():
                 lo, hi = SEND_WINDOW[key]
                 print(f"[notify] {key}: 只在 {lo}~{hi} 點間推播,本輪保留")
             else:
-                notifier.notify(cfg, key, combined, sig, dry_run=args.dry_run)
+                sent = notifier.notify(cfg, key, combined, sig,
+                                       dry_run=args.dry_run)
+                # chips 文字實發後附一張儀表板圖(同一份 DB 資料渲染);
+                # 圖片失敗只印訊息,不影響文字與去重
+                if key == "chips" and sent:
+                    try:
+                        from core import dashboard
+                        dashboard.deliver(conn, cfg, notifier)
+                    except Exception as e:
+                        print(f"[dashboard] 失敗 — {e}")
 
     # 3) 當日彙整 md + 用量:只在完整 daily 執行時寫(避免被單源覆寫)
     if args.command == "daily":

@@ -57,6 +57,20 @@ def push(token, to, text):
         raise RuntimeError(f"LINE push 失敗 {r.status_code}: {r.text}")
 
 
+def push_image(cfg, source, url):
+    """推播圖片訊息(url 須為公開 HTTPS,LINE 於送達時抓取)。"""
+    r = requests.post(
+        "https://api.line.me/v2/bot/message/push",
+        headers={"Authorization": f"Bearer {_token(cfg)}"},
+        json={"to": _target(cfg, source),
+              "messages": [{"type": "image", "originalContentUrl": url,
+                            "previewImageUrl": url}]},
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"LINE push image 失敗 {r.status_code}: {r.text}")
+
+
 def quota_status(cfg):
     """回傳 (本月已用, 每月上限);查詢失敗回 (None, None)。"""
     try:

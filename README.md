@@ -217,6 +217,16 @@ JSON、可回補歷史。
 - 頁面預設(免帶查詢參數)即回傳約一個月的交易日歷史表,`fetch` 每次執行就
   順帶回補近況,不需另外實作 `backfill`。
 
+## 晚間儀表板圖片(core/dashboard.py)
+
+21:30 法人籌碼文字實發成功後,附一張儀表板 PNG:同一份 DB 資料填入固定
+HTML 模板(非 AI 產圖,數字不會漂)→ 本機 headless Chrome 截圖 → Pillow
+裁白邊 → **單獨 commit/push 該 PNG**(LINE 圖片訊息要能立即抓取
+raw.githubusercontent URL,不能等 daily.sh 事後的 commit)→ push image。
+任何一步失敗只印訊息、當天沒圖,文字與去重不受影響。渲染依賴本機 Chrome
+與 Pillow;顏色循台股慣例紅漲綠跌。範圍:加權指數/現貨/上櫃/資券/P C 比/
+期貨/選擇權(即 chips 組內容,個人持股不入圖)。
+
 ## 每日彙整與用量
 
 - `main.py` 每次 `notify`/`daily` 會寫 `reports/<本機當天日期>/daily.md`,收錄當天
