@@ -33,9 +33,10 @@ GROUPS = [
     ("stocks", "個股籌碼", [inst_stock]),
     ("morning", "國際總經與夜盤", [macro, fut_night]),
 ]
-# 各組實發時窗 [起, 迄):morning 早上 8 點排程發(美股收盤+夜盤剛結束),
-# chips 21:30 備援排程發;其餘不限。md 彙整照寫、dry-run 不受限。
-SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24)}
+# 各組實發時窗 [起, 迄):morning 早上 8 點排程發(美股收盤+夜盤剛結束);
+# chips 與 stocks 21:30 發——上櫃法人個股 18:00 尚未公布,提早發會在
+# 21:30 因簽章更新而重發一次。其餘不限。md 彙整照寫、dry-run 不受限。
+SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24), "stocks": (21, 24)}
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
 
