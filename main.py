@@ -116,8 +116,15 @@ def main():
                 lo, hi = SEND_WINDOW[key]
                 print(f"[notify] {key}: 只在 {lo}~{hi} 點間推播,本輪保留")
             else:
-                sent = notifier.notify(cfg, key, combined, sig,
-                                       dry_run=args.dry_run)
+                # 單組推播失敗(如網路未就緒)不拖垮其他組;狀態未寫入,
+                # 下一輪排程會重試
+                try:
+                    sent = notifier.notify(cfg, key, combined, sig,
+                                           dry_run=args.dry_run)
+                except Exception as e:
+                    failures.append(f"notify:{key}")
+                    print(f"[notify] {key}: 失敗 — {e}")
+                    continue
                 # chips 文字實發後附一張儀表板圖(同一份 DB 資料渲染);
                 # 圖片失敗只印訊息,不影響文字與去重
                 if key == "chips" and sent:

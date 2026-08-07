@@ -13,6 +13,7 @@ targets 未指定的來源用 to 當預設。
 同一來源的簽章(sig)未變就不重發,所以 18:00 與 21:30 兩個排程時段不會重複。
 """
 import json
+import time
 from pathlib import Path
 
 import requests
@@ -46,29 +47,35 @@ def _target(cfg, source):
     return cfg.get("targets", {}).get(source) or cfg.get("to")
 
 
-def push(token, to, text):
-    r = requests.post(
-        "https://api.line.me/v2/bot/message/push",
-        headers={"Authorization": f"Bearer {token}"},
-        json={"to": to, "messages": [{"type": "text", "text": text[:4900]}]},
-        timeout=30,
-    )
+def _post_line(token, body):
+    """推播 API 呼叫;連線層錯誤(如剛喚醒 DNS 未就緒)重試 3 次。"""
+    for attempt in range(3):
+        try:
+            r = requests.post(
+                "https://api.line.me/v2/bot/message/push",
+                headers={"Authorization": f"Bearer {token}"},
+                json=body, timeout=30)
+            break
+        except requests.ConnectionError as e:
+            if attempt == 2:
+                raise
+            print(f"[notify] 連線失敗({e.__class__.__name__}),20 秒後重試")
+            time.sleep(20)
     if r.status_code != 200:
         raise RuntimeError(f"LINE push 失敗 {r.status_code}: {r.text}")
 
 
+def push(token, to, text):
+    _post_line(token, {"to": to,
+                       "messages": [{"type": "text", "text": text[:4900]}]})
+
+
 def push_image(cfg, source, url):
     """推播圖片訊息(url 須為公開 HTTPS,LINE 於送達時抓取)。"""
-    r = requests.post(
-        "https://api.line.me/v2/bot/message/push",
-        headers={"Authorization": f"Bearer {_token(cfg)}"},
-        json={"to": _target(cfg, source),
-              "messages": [{"type": "image", "originalContentUrl": url,
-                            "previewImageUrl": url}]},
-        timeout=30,
-    )
-    if r.status_code != 200:
-        raise RuntimeError(f"LINE push image 失敗 {r.status_code}: {r.text}")
+    _post_line(_token(cfg),
+               {"to": _target(cfg, source),
+                "messages": [{"type": "image", "originalContentUrl": url,
+                              "previewImageUrl": url}]})
 
 
 def quota_status(cfg):
