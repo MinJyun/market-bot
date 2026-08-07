@@ -3,6 +3,14 @@
 set -u
 cd "$(dirname "$0")"
 
+# 等網路就緒(最多 5 分鐘):機器剛喚醒 DNS 未就緒時,整輪抓取會全數失敗
+# (2026-08-07 兩輪排程即因此全空轉)
+for i in {1..10}; do
+    curl -s --max-time 5 -o /dev/null "https://www.twse.com.tw" && break
+    echo "[daily.sh] 網路未就緒,30 秒後重試($i/10)"
+    sleep 30
+done
+
 /usr/bin/python3 -W ignore main.py daily
 rc=$?
 
