@@ -37,6 +37,8 @@ GROUPS = [
 # chips 與 stocks 21:30 發——上櫃法人個股 18:00 尚未公布,提早發會在
 # 21:30 因簽章更新而重發一次。其餘不限。md 彙整照寫、dry-run 不受限。
 SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24), "stocks": (21, 24)}
+# 這些組優先推圖(渲染成儀表板 PNG),圖成功就不再推重複的文字;圖失敗退回文字
+IMAGE_GROUPS = {"morning", "chips"}
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
 
@@ -116,23 +118,21 @@ def main():
                 lo, hi = SEND_WINDOW[key]
                 print(f"[notify] {key}: 只在 {lo}~{hi} 點間推播,本輪保留")
             else:
-                # 單組推播失敗(如網路未就緒)不拖垮其他組;狀態未寫入,
-                # 下一輪排程會重試
+                # 圖組:傳入 deliver 讓 notify 優先推圖、圖失敗退文字(同一份
+                # DB 資料渲染)。單組推播失敗不拖垮其他組;狀態未寫入,下一輪
+                # 排程會重試
+                deliver = None
+                if key in IMAGE_GROUPS:
+                    from core import dashboard
+                    deliver = lambda k=key: dashboard.deliver(conn, cfg,
+                                                              notifier, k)
                 try:
-                    sent = notifier.notify(cfg, key, combined, sig,
-                                           dry_run=args.dry_run)
+                    notifier.notify(cfg, key, combined, sig,
+                                    dry_run=args.dry_run, image_deliver=deliver)
                 except Exception as e:
                     failures.append(f"notify:{key}")
                     print(f"[notify] {key}: 失敗 — {e}")
                     continue
-                # chips 文字實發後附一張儀表板圖(同一份 DB 資料渲染);
-                # 圖片失敗只印訊息,不影響文字與去重
-                if key == "chips" and sent:
-                    try:
-                        from core import dashboard
-                        dashboard.deliver(conn, cfg, notifier)
-                    except Exception as e:
-                        print(f"[dashboard] 失敗 — {e}")
 
     # 3) 當日彙整 md + 用量:只在完整 daily 執行時寫(避免被單源覆寫)
     if args.command == "daily":

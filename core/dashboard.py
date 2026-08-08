@@ -15,7 +15,7 @@ from core import store
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 RAW_URL = ("https://raw.githubusercontent.com/MinJyun/market-bot/main/"
-           "reports/{dd}/dashboard.png")
+           "reports/{dd}/{name}")
 WIDTH = 1020
 
 CSS = """
@@ -63,6 +63,12 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .dot { display:inline-block; width:10px; height:10px; border-radius:2px;
        margin-right:5px; }
 .note { color:#778; font-size:12px; padding:2px 6px 8px; }
+.mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.mtile { border:1px solid #e2e6ee; border-radius:8px; padding:9px 12px; }
+.mname { color:#667; font-size:13.5px; }
+.mval { font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;
+        line-height:1.15; }
+.mchg { font-size:14px; font-weight:700; }
 """
 
 
@@ -340,25 +346,136 @@ def _sec_pc(conn):
     </div>"""
 
 
-# ================================================================ 產圖與遞送
-def render(conn):
-    """組 HTML → Chrome 截圖 → 裁白邊,回傳 (png path, 資料日) 或 None。"""
-    idx_html, dd = _sec_index(conn)
-    if not dd:
+# ================================================================ 早上:總經＋夜盤
+def _sec_macro(conn):
+    def latest2(sym):
+        return conn.execute(
+            "SELECT data_date, value FROM macro WHERE symbol=? "
+            "ORDER BY data_date DESC LIMIT 2", (sym,)).fetchall()
+    # (symbol, 顯示名, 小數位, 後綴, 漲跌用 %(否則絕對值,如殖利率百分點))
+    items = [("USDTWD", "美元/台幣", 3, "", True), ("USDJPY", "美元/日圓", 2, "", True),
+             ("DXY", "美元指數", 2, "", True), ("WTI", "WTI原油", 2, "", True),
+             ("GOLD", "黃金", 0, "", True), ("US10Y", "美債10Y", 2, "%", False),
+             ("VIX", "VIX", 2, "", True), ("SOX", "費半", 0, "", True),
+             ("SPX", "S&P500", 0, "", True)]
+    tiles = []
+    for sym, name, dec, suffix, pct in items:
+        rows = latest2(sym)
+        if not rows:
+            continue
+        (_, v), prev = rows[0], (rows[1][1] if len(rows) > 1 else None)
+        if prev is not None:
+            chg = (v - prev) / prev * 100 if pct else v - prev
+            cls = "up" if chg > 0 else ("dn" if chg < 0 else "flat")
+            chg_txt = f"{chg:+.2f}%" if pct else f"{chg:+.2f}"
+        else:
+            cls, chg_txt = "flat", "—"
+        tiles.append(
+            f'<div class="mtile"><div class="mname">{name}</div>'
+            f'<div class="mval {cls}">{v:,.{dec}f}{suffix}</div>'
+            f'<div class="mchg {cls}">{chg_txt}</div></div>')
+    if not tiles:
+        return "", None
+    fx = latest2("USDTWD")
+    dd = fx[0][0] if fx else conn.execute(
+        "SELECT MAX(data_date) FROM macro").fetchone()[0]
+    html = f"""
+    <div class="card">
+      <div class="hd">🌍 國際總經<small>{dd[5:].replace('-', '/')}(美股為前一收盤)</small></div>
+      <div class="bd"><div class="mgrid">{''.join(tiles)}</div></div>
+    </div>"""
+    return html, dd
+
+
+def _sec_fut_night(conn):
+    from sources.fut_night import CONTRACTS
+    row = conn.execute(
+        "SELECT data_date, close, chg, chg_pct, high, low, volume "
+        "FROM fut_night ORDER BY data_date DESC LIMIT 1").fetchone()
+    if not row:
+        return "", None
+    dd, close, chg, pct, high, low, vol = row
+    cls = "up" if chg > 0 else ("dn" if chg < 0 else "flat")
+    arrow = "▲" if chg > 0 else ("▼" if chg < 0 else "—")
+    inst = {r[0]: r[1:] for r in conn.execute(
+        "SELECT contract, foreign_net, trust_net, dealer_net "
+        "FROM fut_night_inst WHERE data_date=?", (dd,))}
+    opt = {r[0]: r[1:] for r in conn.execute(
+        "SELECT cp, foreign_net, trust_net, dealer_net "
+        "FROM fut_night_opt WHERE data_date=?", (dd,))}
+
+    tables = []
+    if inst:
+        rows_html, merged = [], [0.0, 0.0, 0.0]
+        for _, (disp, weight) in CONTRACTS.items():
+            if disp not in inst:
+                continue
+            fo, tr, de = inst[disp]
+            rows_html.append(
+                f"<tr><td>{disp}</td><td class='num'>{_sgn(fo)}</td>"
+                f"<td class='num'>{_sgn(tr)}</td><td class='num'>{_sgn(de)}</td></tr>")
+            for i, v in enumerate((fo, tr, de)):
+                merged[i] += v * weight
+        if len(inst) > 1:
+            rows_html.append(
+                f"<tr><td><b>合併</b></td><td class='num'>{_sgn(merged[0])}</td>"
+                f"<td class='num'>{_sgn(merged[1])}</td>"
+                f"<td class='num'>{_sgn(merged[2])}</td></tr>")
+        tables.append(
+            '<div class="lbl">期貨夜盤淨額(口)</div>'
+            '<table><tr><th>契約</th><th class="num">外資</th>'
+            '<th class="num">投信</th><th class="num">自營</th></tr>'
+            + "".join(rows_html) + "</table>")
+    if opt:
+        rows_html = []
+        for side, label in (("買權", "Call"), ("賣權", "Put")):
+            if side in opt:
+                fo, tr, de = opt[side]
+                rows_html.append(
+                    f"<tr><td>{label}</td><td class='num'>{_sgn(fo)}</td>"
+                    f"<td class='num'>{_sgn(tr)}</td><td class='num'>{_sgn(de)}</td></tr>")
+        tables.append(
+            '<div class="lbl">臺指選擇權夜盤淨額(口)</div>'
+            '<table><tr><th>買賣權</th><th class="num">外資</th>'
+            '<th class="num">投信</th><th class="num">自營</th></tr>'
+            + "".join(rows_html) + "</table>")
+
+    html = f"""
+    <div class="card">
+      <div class="hd">🌙 台指期夜盤<small>{dd[5:].replace('-', '/')}(凌晨5點收盤,合併=台指+0.25小台+0.05微台)</small></div>
+      <div class="bd">
+        <div class="lbl">收盤</div>
+        <div class="big {cls}">{close:,.0f}</div>
+        <div class="{cls}" style="font-size:16px;font-weight:700">{arrow} {abs(chg):,.0f}（{pct:+.2f}%）</div>
+        <div class="lbl">高 {high:,.0f}　低 {low:,.0f}　成交 {vol:,.0f} 口</div>
+        {''.join(tables)}
+      </div>
+    </div>"""
+    return html, dd
+
+
+def render_morning(conn):
+    """早上圖:國際總經 + 台指期夜盤。回傳 (png path, 資料日) 或 None。"""
+    macro_html, mdd = _sec_macro(conn)
+    fut_html, fdd = _sec_fut_night(conn)
+    if not macro_html and not fut_html:
         return None
     body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>{CSS}</style></head><body>
-    <div class="row">{idx_html}{_sec_inst(conn, 'inst_spot', '三大法人現貨買賣超')}
-                      {_sec_inst(conn, 'inst_otc', '上櫃三大法人買賣超')}</div>
-    <div class="row">{_sec_margin(conn)}{_sec_pc(conn)}</div>
-    <div class="row">{_sec_futures(conn)}</div>
-    <div class="row">{_sec_options(conn)}</div>
-    <div class="note">單位除另有說明外為口或張;金額為億元。外資成本與維持率為估算。</div>
+    <div class="row">{macro_html}</div>
+    <div class="row">{fut_html}</div>
+    <div class="note">美股數值為台北時間清晨的美國收盤;夜盤歸屬次一交易日。</div>
     </body></html>"""
+    return _screenshot(body, "morning.png"), (mdd or fdd)
+
+
+# ================================================================ 產圖與遞送
+def _screenshot(body, name):
+    """HTML → Chrome 截圖 → 裁底部白邊,回傳 png path。"""
     out_dir = store.REPORTS / date.today().isoformat()
     out_dir.mkdir(parents=True, exist_ok=True)
-    html_path = out_dir / "dashboard.html"
-    png_path = out_dir / "dashboard.png"
+    html_path = out_dir / name.replace(".png", ".html")
+    png_path = out_dir / name
     html_path.write_text(body, encoding="utf-8")
     subprocess.run(
         [CHROME, "--headless", "--disable-gpu", "--hide-scrollbars",
@@ -376,25 +493,46 @@ def render(conn):
             break
         bottom -= 1
     img.crop((0, 0, img.width, min(bottom + 12, img.height))).save(png_path)
-    return png_path, dd
+    return png_path
 
 
-def deliver(conn, cfg, notifier):
-    """render → 單獨 commit/push PNG → LINE 推圖。失敗只印訊息,不影響文字。"""
-    got = render(conn)
+def render(conn):
+    """晚間籌碼儀表板 HTML → 截圖,回傳 (png path, 資料日) 或 None。"""
+    idx_html, dd = _sec_index(conn)
+    if not dd:
+        return None
+    body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>{CSS}</style></head><body>
+    <div class="row">{idx_html}{_sec_inst(conn, 'inst_spot', '三大法人現貨買賣超')}
+                      {_sec_inst(conn, 'inst_otc', '上櫃三大法人買賣超')}</div>
+    <div class="row">{_sec_margin(conn)}{_sec_pc(conn)}</div>
+    <div class="row">{_sec_futures(conn)}</div>
+    <div class="row">{_sec_options(conn)}</div>
+    <div class="note">單位除另有說明外為口或張;金額為億元。外資成本與維持率為估算。</div>
+    </body></html>"""
+    return _screenshot(body, "dashboard.png"), dd
+
+
+_RENDER = {"chips": render, "morning": render_morning}
+
+
+def deliver(conn, cfg, notifier, key):
+    """render → 單獨 commit/push PNG → LINE 推圖。回傳是否成功推出圖片。"""
+    got = _RENDER[key](conn)
     if not got:
-        print("[dashboard] 無資料可渲染,略過")
-        return
+        print(f"[dashboard] {key} 無資料可渲染,略過")
+        return False
     png_path, dd = got
     base = Path(__file__).parent.parent
     rel = png_path.relative_to(base)
     subprocess.run(["git", "add", str(rel)], cwd=base, check=True,
                    capture_output=True)
-    r = subprocess.run(["git", "commit", "-q", "-m", f"dashboard {dd}"],
+    r = subprocess.run(["git", "commit", "-q", "-m", f"{png_path.stem} {dd}"],
                        cwd=base, capture_output=True)
     if r.returncode == 0:  # 有新內容才需要 push
         subprocess.run(["git", "push", "-q"], cwd=base, check=True,
                        capture_output=True, timeout=60)
-    url = RAW_URL.format(dd=date.today().isoformat())
-    notifier.push_image(cfg, "chips", url)
-    print(f"[dashboard] 已推播圖片 {rel}")
+    url = RAW_URL.format(dd=date.today().isoformat(), name=png_path.name)
+    notifier.push_image(cfg, key, url)
+    print(f"[dashboard] {key} 已推播圖片 {rel}")
+    return True

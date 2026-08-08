@@ -95,11 +95,14 @@ def _load_state():
     return json.loads(STATE.read_text()) if STATE.exists() else {}
 
 
-def notify(cfg, source, text, sig, dry_run=False):
+def notify(cfg, source, text, sig, dry_run=False, image_deliver=None):
     """推播一則訊息並回傳是否實際送出。dry_run 只印不發、不受去重限制。
 
     source 是推播/去重 key:main.py 以 GROUPS 的群組 key 呼叫(一組多來源
     合併一則),sig 則是 {來源名: 各自簽章} 的 dict,整包比對決定要不要重發。
+    image_deliver 若給定:先試推圖(回傳 True 表示成功),圖成功就不推文字
+    以免重複;圖渲染失敗則退回推文字。去重集中在此:圖或文字擇一送出後
+    才寫入 state,故 8:10/8:40 兩輪同資料不會重送。
     """
     if not text:
         print(f"[notify] {source}: 無內容，跳過")
@@ -111,8 +114,17 @@ def notify(cfg, source, text, sig, dry_run=False):
     if state.get(source) == sig:
         print(f"[notify] {source}: 資料未更新，跳過推播")
         return False
-    push(_token(cfg), _target(cfg, source), text)
+    via = None
+    if image_deliver is not None:
+        try:
+            if image_deliver():
+                via = "圖片"
+        except Exception as e:
+            print(f"[notify] {source}: 圖渲染失敗，退回文字 — {e}")
+    if via is None:
+        push(_token(cfg), _target(cfg, source), text)
+        via = f"文字 {len(text)} 字"
     state[source] = sig
     STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1))
-    print(f"[notify] {source}: 已推播（{len(text)} 字）")
+    print(f"[notify] {source}: 已推播（{via}）")
     return True
