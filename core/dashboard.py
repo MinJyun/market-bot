@@ -513,7 +513,35 @@ def render(conn):
     return _screenshot(body, "dashboard.png"), dd
 
 
-_RENDER = {"chips": render, "morning": render_morning}
+def render_chips_pre(conn):
+    """先行版:期貨/選擇權機構籌碼 + Put/Call Ratio(盤後 15 點多公布即可出,
+    不含融資融券等較晚公布項目)。回傳 (png path, 資料日) 或 None。"""
+    fut, opt, pc = _sec_futures(conn), _sec_options(conn), _sec_pc(conn)
+    if not (fut or opt or pc):
+        return None
+    body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>{CSS}</style></head><body>
+    <div class="row">{pc}</div>
+    <div class="row">{fut}</div>
+    <div class="row">{opt}</div>
+    <div class="note">先行版:期貨/選擇權機構籌碼與 Put/Call Ratio;融資融券、現貨法人等較晚公布項目見晚間完整版。</div>
+    </body></html>"""
+    dd = conn.execute("SELECT MAX(data_date) FROM futures_inst").fetchone()[0]
+    return _screenshot(body, "chips_pre.png"), dd
+
+
+def chips_pre_ready(conn):
+    """先行版所需(期貨/選擇權/PC)當日資料是否全齊,避免推出殘缺的先行版。"""
+    today = date.today().isoformat()
+    for t in ("futures_inst", "futures_lt", "options_inst",
+              "options_inst_cp", "options_lt", "pc_ratio"):
+        if conn.execute(f"SELECT MAX(data_date) FROM {t}").fetchone()[0] != today:
+            return False
+    return True
+
+
+_RENDER = {"chips": render, "morning": render_morning,
+           "chips_pre": render_chips_pre}
 
 
 def deliver(conn, cfg, notifier, key):

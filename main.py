@@ -32,13 +32,17 @@ GROUPS = [
                           my_chips]),
     ("stocks", "個股籌碼", [inst_stock]),
     ("morning", "國際總經與夜盤", [macro, fut_night]),
+    # 先行版:期貨/選擇權機構籌碼 15 點多公布即出圖,不等融資等較晚項目。
+    # 成員與 chips 重疊(只重出這幾塊),推播/去重走獨立 key。
+    ("chips_pre", "期貨選擇權先行版", [futures_traders, options_traders, pc_ratio]),
 ]
 # 各組實發時窗 [起, 迄):morning 早上 8 點排程發(美股收盤+夜盤剛結束);
 # chips 與 stocks 21:30 發——上櫃法人個股 18:00 尚未公布,提早發會在
 # 21:30 因簽章更新而重發一次。其餘不限。md 彙整照寫、dry-run 不受限。
-SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24), "stocks": (21, 24)}
+SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24), "stocks": (21, 24),
+               "chips_pre": (15, 21)}
 # 這些組優先推圖(渲染成儀表板 PNG),圖成功就不再推重複的文字;圖失敗退回文字
-IMAGE_GROUPS = {"morning", "chips"}
+IMAGE_GROUPS = {"morning", "chips", "chips_pre"}
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
 
@@ -108,15 +112,24 @@ def main():
             if not parts:
                 continue
             combined = "\n\n".join(parts)
-            sections.append((title, combined))
+            if key != "chips_pre":   # 先行版內容與 chips 重複,不另存入 daily.md
+                sections.append((title, combined))
+            # 決定是否保留本輪:時窗未到,或先行版當日資料未齊(避免推殘缺)
+            hold = None
+            if not args.dry_run:
+                if key in SEND_WINDOW:
+                    lo, hi = SEND_WINDOW[key]
+                    if not (lo <= datetime.now().hour < hi):
+                        hold = f"只在 {lo}~{hi} 點間推播"
+                if hold is None and key == "chips_pre":
+                    from core import dashboard
+                    if not dashboard.chips_pre_ready(conn):
+                        hold = "期貨/選擇權/PC 當日資料未齊"
             if cfg is None:
                 if args.command == "notify":
                     print("[notify] 未設定 line_config.json,跳過推播")
-            elif (not args.dry_run and key in SEND_WINDOW
-                  and not (SEND_WINDOW[key][0] <= datetime.now().hour
-                           < SEND_WINDOW[key][1])):
-                lo, hi = SEND_WINDOW[key]
-                print(f"[notify] {key}: 只在 {lo}~{hi} 點間推播,本輪保留")
+            elif hold:
+                print(f"[notify] {key}: {hold},本輪保留")
             else:
                 # 圖組:傳入 deliver 讓 notify 優先推圖、圖失敗退文字(同一份
                 # DB 資料渲染)。單組推播失敗不拖垮其他組;狀態未寫入,下一輪
