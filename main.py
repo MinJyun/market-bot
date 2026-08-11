@@ -40,9 +40,9 @@ GROUPS = [
 # chips 與 stocks 21:30 發——上櫃法人個股 18:00 尚未公布,提早發會在
 # 21:30 因簽章更新而重發一次。其餘不限。md 彙整照寫、dry-run 不受限。
 SEND_WINDOW = {"morning": (6, 12), "chips": (21, 24), "stocks": (21, 24),
-               "chips_pre": (15, 21)}
+               "chips_pre": (15, 21), "etf": (18, 24)}
 # 這些組優先推圖(渲染成儀表板 PNG),圖成功就不再推重複的文字;圖失敗退回文字
-IMAGE_GROUPS = {"morning", "chips", "chips_pre"}
+IMAGE_GROUPS = {"morning", "chips", "chips_pre", "etf"}
 SOURCES = {s.NAME: s for _, _, members in GROUPS for s in members}
 
 

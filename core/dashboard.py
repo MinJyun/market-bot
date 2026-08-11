@@ -69,6 +69,18 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .mval { font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;
         line-height:1.15; }
 .mchg { font-size:14px; font-weight:700; }
+.etfcol { column-count:2; column-gap:10px; }
+.etfcol .card { flex:none; margin-bottom:10px; break-inside:avoid; }
+.etfrow { display:flex; justify-content:space-between; gap:10px;
+          font-size:14px; padding:2.5px 0; }
+.etfrow span { color:#334; }
+.etfrow b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.etfsub { font-size:13px; font-weight:700; color:#556; margin:6px 0 1px; }
+.etffut { font-size:13px; color:#7a5; font-weight:700; padding:2px 0; }
+.etfflat { color:#889; font-size:13.5px; padding:3px 0; }
+.banner { background:#1a2f5e; color:#fff; font-size:19px; font-weight:800;
+          padding:9px 14px; border-radius:10px; margin-bottom:10px; }
+.banner small { font-weight:400; opacity:.85; font-size:14px; margin-left:8px; }
 """
 
 
@@ -540,8 +552,86 @@ def chips_pre_ready(conn):
     return True
 
 
+# ================================================================ 主動式 ETF 持股異動
+def _sec_etf(conn, etf):
+    """單檔 ETF 相鄰兩資料日的持股異動卡片(數字口徑同 active_etf 文字版)。"""
+    from sources import active_etf as ae
+    dates = ae._recent_dates(conn, etf, 2)
+    if len(dates) < 2:
+        return ""
+    curr_d, prev_d = dates
+    curr, prev = ae._holdings(conn, etf, curr_d), ae._holdings(conn, etf, prev_d)
+    fc, fp = ae._fund_day(conn, etf, curr_d), ae._fund_day(conn, etf, prev_d)
+
+    def price(code):
+        h = curr.get(code) or prev.get(code)
+        return h["amount"] / h["shares"] if h["amount"] and h["shares"] else 0
+
+    new, gone, inc, dec = [], [], [], []
+    for code in set(curr) | set(prev):
+        c, p = curr.get(code), prev.get(code)
+        u = ae._unit((c or p)["name"])
+        if p is None:
+            new.append((c["amount"] or 0, c["name"], c["shares"], u, c["amount"]))
+        elif c is None:
+            est = price(code) * p["shares"]
+            gone.append((est, p["name"], est))
+        elif c["shares"] != p["shares"]:
+            d = c["shares"] - p["shares"]
+            est = price(code) * d
+            (inc if d > 0 else dec).append((abs(est), c["name"], d, u, est))
+
+    du = ((fc["units"] - fp["units"]) / fp["units"] * 100
+          if fc["units"] and fp["units"] else 0)
+
+    def row(left, right, cls):
+        return (f'<div class="etfrow"><span>{left}</span>'
+                f'<b class="{cls}">{right}</b></div>')
+
+    body = [f'<div class="etffut">⚡ {h["name"]} {h["shares"]:,.0f}口'
+            f'(佔淨值{h["weight"]:.1f}%)</div>'
+            for h in curr.values() if "期貨" in (h["name"] or "")]
+    for amt, name, shares, u, a in sorted(new, key=lambda x: -x[0]):
+        body.append(row(f"🆕 {name} {shares:+,.0f}{u}",
+                        ae._money(a) if a else "—", "up"))
+    for est, name, e in sorted(gone, key=lambda x: -x[0]):
+        body.append(row(f"❌ 清倉 {name}", ae._money(e), "dn"))
+    for label, items, cls in (("➕ 加碼", inc, "up"), ("➖ 減碼", dec, "dn")):
+        if not items:
+            continue
+        items.sort(key=lambda x: -x[0])
+        body.append(f'<div class="etfsub">{label}</div>')
+        for amt, name, d, u, est in items[:ae.TOP_N]:
+            body.append(row(f"{name} {d:+,.0f}{u}", ae._money(est), cls))
+        if len(items) > ae.TOP_N:
+            body.append(f'<div class="etfflat">…另 {len(items) - ae.TOP_N} 筆</div>')
+    if not (new or gone or inc or dec):
+        body.append('<div class="etfflat">持股無變動</div>')
+
+    return f"""
+    <div class="card">
+      <div class="hd">📊 {etf} {ae.FUNDS[etf]['name']}<small>{prev_d[5:]}→{curr_d[5:]} 申贖{du:+.1f}%</small></div>
+      <div class="bd">{''.join(body)}</div>
+    </div>"""
+
+
+def render_etf(conn):
+    """主動式 ETF 持股異動:7 檔各一張卡,多欄排版。回傳 (png path, 資料日) 或 None。"""
+    from sources.active_etf import FUNDS
+    cards = [h for etf in sorted(FUNDS) if (h := _sec_etf(conn, etf))]
+    if not cards:
+        return None
+    dd = conn.execute("SELECT MAX(data_date) FROM fund_day").fetchone()[0]
+    body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>{CSS}</style></head><body>
+    <div class="banner">📊 主動式ETF持股異動<small>{dd[5:].replace('-', '/')} 資料</small></div>
+    <div class="etfcol">{''.join(cards)}</div>
+    </body></html>"""
+    return _screenshot(body, "etf.png"), dd
+
+
 _RENDER = {"chips": render, "morning": render_morning,
-           "chips_pre": render_chips_pre}
+           "chips_pre": render_chips_pre, "etf": render_etf}
 
 
 def deliver(conn, cfg, notifier, key):
