@@ -1,0 +1,83 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+* { margin:0; padding:0; box-sizing:border-box;
+    font-family:'PingFang TC','Heiti TC',sans-serif; }
+body { width:1020px; background:#eef1f6; padding:10px; }
+.row { display:flex; gap:10px; margin-bottom:10px; }
+.card { background:#fff; border-radius:10px; overflow:hidden; flex:1;
+        box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.hd { background:#1a2f5e; color:#fff; font-size:17px; font-weight:700;
+      padding:8px 14px; }
+.hd small { font-weight:400; opacity:.85; margin-left:8px; font-size:13px; }
+.bd { padding:10px 14px; }
+.up { color:#d0342c; } .dn { color:#1a8a4a; } .flat { color:#666; }
+table { width:100%; border-collapse:collapse; font-size:15px; }
+th { color:#555; font-weight:600; text-align:left; padding:5px 4px;
+     border-bottom:1px solid #dde; font-size:13px; }
+td { padding:5px 4px; border-bottom:1px solid #f0f2f6; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.big { font-size:34px; font-weight:800; letter-spacing:.5px; }
+.mid { font-size:20px; font-weight:700; }
+.lbl { color:#667; font-size:13px; margin-top:8px; }
+.bars { display:flex; align-items:flex-end; gap:14px; height:120px;
+        margin:14px 6px 4px; }
+.bargrp { flex:1; display:flex; flex-direction:column; align-items:center;
+          height:100%; justify-content:flex-end; }
+.barv { font-size:13px; font-weight:700; margin-bottom:2px; }
+.bar { width:34px; border-radius:3px 3px 0 0; }
+.barn { font-size:13px; color:#555; margin-top:4px; }
+.cols { display:flex; gap:10px; }
+.col { flex:1; border:1px solid #e2e6ee; border-radius:8px; padding:8px 10px; }
+.colhd { text-align:center; font-weight:700; font-size:16px; padding:4px 0 6px; }
+.kv { display:flex; justify-content:space-between; font-size:14.5px;
+      padding:2.5px 0; gap:6px; }
+.kv span:first-child { white-space:nowrap; color:#445; }
+.kv b { font-variant-numeric:tabular-nums; text-align:right;
+        white-space:nowrap; }
+.sep { border-top:1px dashed #ccd3e0; margin:6px 0; }
+.donutwrap { display:flex; align-items:center; gap:14px; flex:1; }
+.donut { width:110px; height:110px; border-radius:50%; position:relative; }
+.donut .hole { position:absolute; inset:18px; background:#fff;
+               border-radius:50%; display:flex; align-items:center;
+               justify-content:center; font-weight:800; font-size:17px; }
+.legend { font-size:13.5px; line-height:1.7; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:2px;
+       margin-right:5px; }
+.note { color:#778; font-size:12px; padding:2px 6px 8px; }
+.mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.mtile { border:1px solid #e2e6ee; border-radius:8px; padding:9px 12px; }
+.mname { color:#667; font-size:13.5px; }
+.mval { font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;
+        line-height:1.15; }
+.mchg { font-size:14px; font-weight:700; }
+.etfcol { column-count:2; column-gap:10px; }
+.etfcol .card { flex:none; margin-bottom:10px; break-inside:avoid; }
+.etfrow { display:flex; justify-content:space-between; gap:10px;
+          font-size:14px; padding:2.5px 0; }
+.etfrow span { color:#334; }
+.etfrow b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.etfsub { font-size:13px; font-weight:700; color:#556; margin:6px 0 1px; }
+.etffut { font-size:13px; color:#7a5; font-weight:700; padding:2px 0; }
+.etfflat { color:#889; font-size:13.5px; padding:3px 0; }
+.banner { background:#1a2f5e; color:#fff; font-size:19px; font-weight:800;
+          padding:9px 14px; border-radius:10px; margin-bottom:10px; }
+.banner small { font-weight:400; opacity:.85; font-size:14px; margin-left:8px; }
+</style></head><body>
+    <div class="row">
+    <div class="card">
+      <div class="hd">🌍 國際總經<small>08/14(美股為前一收盤)</small></div>
+      <div class="bd"><div class="mgrid"><div class="mtile"><div class="mname">美元/台幣</div><div class="mval dn">32.046</div><div class="mchg dn">-0.38%</div></div><div class="mtile"><div class="mname">美元/日圓</div><div class="mval dn">159.20</div><div class="mchg dn">-0.11%</div></div><div class="mtile"><div class="mname">美元指數</div><div class="mval dn">99.64</div><div class="mchg dn">-0.32%</div></div><div class="mtile"><div class="mname">WTI原油</div><div class="mval up">82.40</div><div class="mchg up">+1.42%</div></div><div class="mtile"><div class="mname">黃金</div><div class="mval up">4,432</div><div class="mchg up">+1.57%</div></div><div class="mtile"><div class="mname">美債10Y</div><div class="mval up">4.70%</div><div class="mchg up">+0.06</div></div><div class="mtile"><div class="mname">VIX</div><div class="mval dn">14.25</div><div class="mchg dn">-2.60%</div></div><div class="mtile"><div class="mname">費半</div><div class="mval dn">12,417</div><div class="mchg dn">-0.31%</div></div><div class="mtile"><div class="mname">S&P500</div><div class="mval dn">7,786</div><div class="mchg dn">-0.17%</div></div></div></div>
+    </div></div>
+    <div class="row">
+    <div class="card">
+      <div class="hd">🌙 台指期夜盤<small>08/17(凌晨5點收盤,合併=台指+0.25小台+0.05微台)</small></div>
+      <div class="bd">
+        <div class="lbl">收盤</div>
+        <div class="big dn">45,727</div>
+        <div class="dn" style="font-size:16px;font-weight:700">▼ 85（-0.19%）</div>
+        <div class="lbl">高 45,968　低 45,551　成交 24,791 口</div>
+        <div class="lbl">期貨夜盤淨額(口)</div><table><tr><th>契約</th><th class="num">外資</th><th class="num">投信</th><th class="num">自營</th></tr><tr><td>台指</td><td class='num'><span class="dn">-153</span></td><td class='num'><span class="flat">+0</span></td><td class='num'><span class="dn">-26</span></td></tr><tr><td>小台</td><td class='num'><span class="dn">-248</span></td><td class='num'><span class="flat">+0</span></td><td class='num'><span class="dn">-177</span></td></tr><tr><td>微台</td><td class='num'><span class="dn">-955</span></td><td class='num'><span class="flat">+0</span></td><td class='num'><span class="up">+290</span></td></tr><tr><td><b>合併</b></td><td class='num'><span class="dn">-263</span></td><td class='num'><span class="flat">+0</span></td><td class='num'><span class="dn">-56</span></td></tr></table><div class="lbl">臺指選擇權夜盤淨額(口)</div><table><tr><th>買賣權</th><th class="num">外資</th><th class="num">投信</th><th class="num">自營</th></tr><tr><td>Call</td><td class='num'><span class="dn">-112</span></td><td class='num'><span class="flat">+0</span></td><td class='num'><span class="up">+656</span></td></tr><tr><td>Put</td><td class='num'><span class="up">+13</span></td><td class='num'><span class="flat">+0</span></td><td class='num'><span class="dn">-644</span></td></tr></table>
+      </div>
+    </div></div>
+    <div class="note">美股數值為台北時間清晨的美國收盤;夜盤歸屬次一交易日。</div>
+    </body></html>
