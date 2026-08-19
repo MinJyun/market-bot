@@ -81,6 +81,12 @@ td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
 .banner { background:#1a2f5e; color:#fff; font-size:19px; font-weight:800;
           padding:9px 14px; border-radius:10px; margin-bottom:10px; }
 .banner small { font-weight:400; opacity:.85; font-size:14px; margin-left:8px; }
+.oi { font-weight:400; font-size:12.5px; color:#889; margin-left:6px; }
+.subnote { font-size:12px; color:#556; padding:7px 2px 1px; text-align:center; }
+.muted { color:#8894a5; font-size:11.5px; margin-left:5px; }
+.chgsmall { font-size:11.5px; margin-left:4px; }
+.cols table { font-size:14px; }
+.cols th, .cols td { padding:4px 4px; }
 """
 
 
@@ -211,6 +217,13 @@ def _sec_margin(conn):
     </div>"""
 
 
+def _trow(label, val, chg):
+    """機構籌碼表列:身份 | 淨部位(有號、紅多綠空) | 前日Δ。"""
+    c = _sgn(chg) if chg is not None else '<span class="flat">—</span>'
+    return (f'<tr><td>{label}</td><td class="num">{_sgn(val)}</td>'
+            f'<td class="num">{c}</td></tr>')
+
+
 def _sec_futures(conn):
     from sources.futures_traders import CONTRACTS, _foreign_cost
     dates = [r[0] for r in conn.execute(
@@ -232,44 +245,39 @@ def _sec_futures(conn):
         ic = conn.execute("SELECT foreign_net,trust_net,dealer_net FROM futures_inst "
                           "WHERE contract=? AND data_date=?",
                           (disp, idates[0] if idates else "")).fetchone()
-        ip = conn.execute("SELECT foreign_net FROM futures_inst "
+        ip = conn.execute("SELECT foreign_net,trust_net,dealer_net FROM futures_inst "
                           "WHERE contract=? AND data_date=?",
                           (disp, idates[1] if len(idates) > 1 else "")).fetchone()
         if not lt and not ic:
             continue
-        kv = []
+        rows = []
         if ic:
-            fchg = f"（前日 {_sgn(ic[0] - ip[0])}）" if ip else ""
-            kv.append(f'<div class="kv"><span>外資</span><b>{_sgn(ic[0])} {fchg}</b></div>')
-            kv.append(f'<div class="kv"><span>投信</span><b>{_sgn(ic[1])}</b></div>')
-            kv.append(f'<div class="kv"><span>自營</span><b>{_sgn(ic[2])}</b></div>')
-        if disp == "台指期" and cost:
-            c, settle, pos, pnl, cstart = cost
-            kv.append('<div class="sep"></div>')
-            kv.append(f'<div class="kv"><span>外資成本(估)</span><b>{_n(c)}</b></div>')
-            kv.append(f'<div class="kv"><span>結算</span><b>{_n(settle)}</b></div>')
-            kv.append(f'<div class="kv"><span>{"浮盈" if pnl >= 0 else "浮虧"}</span>'
-                      f'<b>{_sgn(pnl)} 億</b><span style="color:#889;font-size:12px">'
-                      f'自{cstart[5:]}</span></div>')
+            for i, who in ((0, "外資"), (1, "投信"), (2, "自營")):
+                rows.append(_trow(who, ic[i], (ic[i] - ip[i]) if ip else None))
+        oi_txt = ""
         if lt:
             b5, b10, s5, s10, oi = lt
             n5, n10 = b5 - s5, b10 - s10
-            c5 = f"（前日 {_sgn(n5 - (ltp[0] - ltp[2]))}）" if ltp else ""
-            c10 = f"（前日 {_sgn(n10 - (ltp[1] - ltp[3]))}）" if ltp else ""
-            kv.append('<div class="sep"></div>')
-            kv.append(f'<div class="kv"><span>大戶前五大</span>'
-                      f'<b>{"淨多" if n5 >= 0 else "淨空"} {abs(n5):,.0f} 口 {c5}</b></div>')
-            kv.append(f'<div class="kv"><span>大戶前十大</span>'
-                      f'<b>{"淨多" if n10 >= 0 else "淨空"} {abs(n10):,.0f} 口 {c10}</b></div>')
-            oi_txt = f"未平倉 {oi:,.0f} 口"
-        else:
-            oi_txt = ""
-        cols.append(f'<div class="col"><div class="colhd">{disp}</div>'
-                    f'<div style="text-align:center;color:#667;font-size:13px">{oi_txt}</div>'
-                    f'<div class="sep"></div>{"".join(kv)}</div>')
+            c5 = (n5 - (ltp[0] - ltp[2])) if ltp else None
+            c10 = (n10 - (ltp[1] - ltp[3])) if ltp else None
+            rows.append(_trow("前五大", n5, c5))
+            rows.append(_trow("前十大", n10, c10))
+            oi_txt = f'<span class="oi">未平倉 {oi:,.0f} 口</span>'
+        table = ('<table><tr><th>身份</th><th class="num">淨部位(口)</th>'
+                 '<th class="num">前日Δ</th></tr>' + "".join(rows) + '</table>')
+        costhtml = ""
+        if disp == "台指期" and cost:
+            c, settle, pos, pnl, cstart = cost
+            cls = "up" if pnl >= 0 else "dn"
+            costhtml = (f'<div class="subnote">外資估算成本 <b>{_n(c)}</b>｜結算 {_n(settle)}'
+                        f'｜<span class="{cls}">{"浮盈" if pnl >= 0 else "浮虧"} '
+                        f'{abs(pnl):,.0f} 億</span>'
+                        f'<span class="muted">自{cstart[5:]}</span></div>')
+        cols.append(f'<div class="col"><div class="colhd">{disp}{oi_txt}</div>'
+                    f'{table}{costhtml}</div>')
     return f"""
     <div class="card">
-      <div class="hd">📊 期貨機構籌碼<small>{curr[5:].replace('-', '/')}(三大法人淨/口)</small></div>
+      <div class="hd">📊 期貨機構籌碼<small>{curr[5:].replace('-', '/')}(未平倉多空淨額/口,+多 −空;前五/十大為特定法人淨)</small></div>
       <div class="bd"><div class="cols">{''.join(cols)}</div></div>
     </div>"""
 
@@ -282,8 +290,8 @@ def _sec_options(conn):
                       "WHERE data_date=?", (idd,)).fetchone()
     ipd = conn.execute("SELECT MAX(data_date) FROM options_inst WHERE data_date<?",
                        (idd,)).fetchone()[0]
-    ip = conn.execute("SELECT foreign_net FROM options_inst WHERE data_date=?",
-                      (ipd,)).fetchone() if ipd else None
+    ip = conn.execute("SELECT foreign_net,trust_net,dealer_net FROM options_inst "
+                      "WHERE data_date=?", (ipd,)).fetchone() if ipd else None
     cpdd = conn.execute("SELECT MAX(data_date) FROM options_inst_cp").fetchone()[0]
     cps = {r[0]: r[1:] for r in conn.execute(
         "SELECT cp, foreign_net, trust_net, dealer_net FROM options_inst_cp "
@@ -291,23 +299,35 @@ def _sec_options(conn):
     dates = [r[0] for r in conn.execute(
         "SELECT DISTINCT data_date FROM options_lt ORDER BY data_date DESC LIMIT 2")]
 
-    left = ['<div class="col" style="flex:0 0 330px">',
-            '<div class="colhd">三大法人淨(不分買賣權)</div>']
+    cppd = conn.execute("SELECT MAX(data_date) FROM options_inst_cp WHERE data_date<?",
+                        (cpdd,)).fetchone()[0] if cpdd else None
+    cpp = {r[0]: r[1:] for r in conn.execute(
+        "SELECT cp, foreign_net, trust_net, dealer_net FROM options_inst_cp "
+        "WHERE data_date=?", (cppd,))} if cppd else {}
+
+    left = ['<div class="col" style="flex:0 0 360px">']
     if ic:
-        fchg = f"（前日 {_sgn(ic[0] - ip[0])}）" if ip else ""
-        left.append(f'<div class="kv"><span>外資</span><b>{_sgn(ic[0])} {fchg}</b></div>')
-        left.append(f'<div class="kv"><span>投信</span><b>{_sgn(ic[1])}</b></div>')
-        left.append(f'<div class="kv"><span>自營</span><b>{_sgn(ic[2])}</b></div>')
+        rows = "".join(
+            _trow(who, ic[i], (ic[i] - ip[i]) if ip else None)
+            for i, who in ((0, "外資"), (1, "投信"), (2, "自營")))
+        left.append('<div class="colhd">三大法人淨(不分買賣權)</div>'
+                    '<table><tr><th>身份</th><th class="num">淨部位(口)</th>'
+                    '<th class="num">前日Δ</th></tr>' + rows + '</table>')
     if cps:
-        left.append('<div class="sep"></div><div style="text-align:center;'
-                    'font-weight:700;font-size:14px;padding:2px 0">Call / Put 淨 OI</div>')
-        for side, label in (("買權", "Call"), ("賣權", "Put")):
-            if side in cps:
-                fo, tr, de = cps[side]
-                left.append(
-                    f'<div class="kv"><span>{label}</span>'
-                    f'<b style="font-size:13px">外資 {_sgn(fo)}｜'
-                    f'投信 {_sgn(tr)}｜自營 {_sgn(de)}</b></div>')
+        def cpcell(side, i):
+            v = cps[side][i]
+            if side in cpp:
+                return _sgn(v) + f'<span class="chgsmall">{_sgn(v - cpp[side][i])}</span>'
+            return _sgn(v)
+        crows = ""
+        for i, who in ((0, "外資"), (1, "投信"), (2, "自營")):
+            call = cpcell("買權", i) if "買權" in cps else "—"
+            put = cpcell("賣權", i) if "賣權" in cps else "—"
+            crows += (f'<tr><td>{who}</td><td class="num">{call}</td>'
+                      f'<td class="num">{put}</td></tr>')
+        left.append('<div class="colhd" style="margin-top:8px">Call／Put 淨OI(值+前日Δ)</div>'
+                    '<table><tr><th>身份</th><th class="num">Call</th>'
+                    '<th class="num">Put</th></tr>' + crows + '</table>')
     left.append("</div>")
 
     cols = ["".join(left)]
@@ -317,26 +337,26 @@ def _sec_options(conn):
                           (disp, dates[0] if dates else "")).fetchone()
         if not lt:
             continue
-        ltp = conn.execute("SELECT buy10,sell10 FROM options_lt "
+        ltp = conn.execute("SELECT buy5,buy10,sell5,sell10 FROM options_lt "
                            "WHERE contract=? AND data_date=?",
                            (disp, dates[1] if len(dates) > 1 else "")).fetchone()
         b5, b10, s5, s10, oi = lt
-        cb = f"（{_sgn(b10 - ltp[0])}）" if ltp else ""
-        cs = f"（{_sgn(s10 - ltp[1])}）" if ltp else ""
+
+        def bscell(v, i):
+            return (f'{v:,.0f}<span class="chgsmall">{_sgn(v - ltp[i])}</span>'
+                    if ltp else f'{v:,.0f}')
         cols.append(f"""
         <div class="col" style="background:{tone}">
-          <div class="colhd">{disp}</div>
-          <div style="text-align:center;color:#667;font-size:13px">未平倉 {oi:,.0f} 口</div>
-          <div class="sep"></div>
-          <div class="kv"><span>前五大</span><b>買 {b5:,.0f}｜賣 {s5:,.0f}</b></div>
-          <div class="kv"><span>前十大 買</span><b>{b10:,.0f} {cb}</b></div>
-          <div class="kv"><span>前十大 賣</span><b>{s10:,.0f} {cs}</b></div>
+          <div class="colhd">{disp}<span class="oi">未平倉 {oi:,.0f} 口</span></div>
+          <table><tr><th>特定法人</th><th class="num">買(前日Δ)</th><th class="num">賣(前日Δ)</th></tr>
+            <tr><td>前五大</td><td class="num">{bscell(b5, 0)}</td><td class="num">{bscell(s5, 2)}</td></tr>
+            <tr><td>前十大</td><td class="num">{bscell(b10, 1)}</td><td class="num">{bscell(s10, 3)}</td></tr>
+          </table>
         </div>""")
     return f"""
     <div class="card">
-      <div class="hd">🧩 臺指選擇權機構籌碼<small>{idd[5:].replace('-', '/')}(口)</small></div>
-      <div class="bd"><div class="cols">{''.join(cols)}</div>
-      <div class="note">前五大/前十大為「所有契約」列之特定法人</div></div>
+      <div class="hd">🧩 臺指選擇權機構籌碼<small>{idd[5:].replace('-', '/')}(未平倉淨口數;前五/十大為所有契約特定法人)</small></div>
+      <div class="bd"><div class="cols">{''.join(cols)}</div></div>
     </div>"""
 
 
@@ -630,8 +650,94 @@ def render_etf(conn):
     return _screenshot(body, "etf.png"), dd
 
 
+# ================================================================ 個股籌碼
+def _sec_stock_market(conn, label, table, dd):
+    """一個市場(上市/上櫃)三欄:三大法人/外資/投信 買超前5、賣超前5(含連N標注)。"""
+    from sources import inst_stock as st
+    rows = [r for r in conn.execute(
+        f"SELECT code, name, foreign_net, trust_net, total_net FROM {table} "
+        "WHERE data_date=?", (dd,)) if st.STOCK_RE.match(r[0])]
+
+    def line(r, idx, col, cls):
+        code, name, net = r[0], r[1], r[idx]
+        d = st._streak(conn, table, col, code, dd, net)
+        tag = (f'<span class="chgsmall">連{d}{"買" if net > 0 else "賣"}</span>'
+               if d >= 2 else "")
+        return (f'<div class="etfrow"><span>{name}'
+                f'<span class="muted">{code}</span></span>'
+                f'<b class="{cls}">{net / 1000:+,.0f}張{tag}</b></div>')
+
+    cols = []
+    for title, idx, col in (("三大法人", 4, "total_net"),
+                            ("外資", 2, "foreign_net"),
+                            ("投信", 3, "trust_net")):
+        ranked = sorted((r for r in rows if r[idx]), key=lambda r: -r[idx])
+        buys = [r for r in ranked if r[idx] > 0][:5]
+        sells = [r for r in ranked if r[idx] < 0][-5:][::-1]
+        body = []
+        if buys:
+            body.append('<div class="etfsub"><span class="up">買超</span></div>')
+            body += [line(r, idx, col, "up") for r in buys]
+        if sells:
+            body.append('<div class="etfsub"><span class="dn">賣超</span></div>')
+            body += [line(r, idx, col, "dn") for r in sells]
+        cols.append(f'<div class="col"><div class="colhd">{title}</div>'
+                    f'{"".join(body) or "<div class=etfflat>—</div>"}</div>')
+    return f"""
+    <div class="card">
+      <div class="hd">📊 {label}個股·法人買賣超<small>{dd[5:].replace('-', '/')}(張)</small></div>
+      <div class="bd"><div class="cols">{''.join(cols)}</div></div>
+    </div>"""
+
+
+def _sec_stock_etf(conn, dd, odd):
+    """主動ETF目前持股 ∩ 三大法人買賣超,取絕對值前 8。"""
+    from sources import active_etf
+    by_code = {r[0]: r for r in conn.execute(
+        "SELECT code, name, total_net FROM inst_stock WHERE data_date=?", (dd,))}
+    if odd:
+        for r in conn.execute("SELECT code, name, total_net FROM inst_otc_stock "
+                              "WHERE data_date=?", (odd,)):
+            by_code.setdefault(r[0], r)
+    watch = active_etf.latest_holding_codes(conn) & by_code.keys()
+    if not watch:
+        return ""
+    top = sorted((by_code[c] for c in watch), key=lambda r: -abs(r[2]))[:8]
+    rows = "".join(
+        f'<div class="etfrow"><span>{name}<span class="muted">{code}</span></span>'
+        f'<b class="{"up" if net > 0 else "dn"}">{net / 1000:+,.0f}張</b></div>'
+        for code, name, net in top)
+    return f"""
+    <div class="card">
+      <div class="hd">🎯 ETF關注股<small>主動ETF持股 ∩ 三大法人買賣超</small></div>
+      <div class="bd"><div class="etfcol">{rows}</div></div>
+    </div>"""
+
+
+def render_stocks(conn):
+    """個股籌碼:上市/上櫃各一卡(三大法人/外資/投信 買賣超前5)+ ETF關注股。"""
+    dd = conn.execute("SELECT MAX(data_date) FROM inst_stock").fetchone()[0]
+    if not dd:
+        return None
+    odd = conn.execute("SELECT MAX(data_date) FROM inst_otc_stock").fetchone()[0]
+    cards = [f'<div class="row">{_sec_stock_market(conn, "上市", "inst_stock", dd)}</div>']
+    if odd:
+        cards.append(f'<div class="row">'
+                     f'{_sec_stock_market(conn, "上櫃", "inst_otc_stock", odd)}</div>')
+    etf = _sec_stock_etf(conn, dd, odd)
+    if etf:
+        cards.append(f'<div class="row">{etf}</div>')
+    body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>{CSS}</style></head><body>
+    <div class="banner">📊 個股籌碼<small>{dd[5:].replace('-', '/')} 三大法人買賣超前五</small></div>
+    {''.join(cards)}
+    </body></html>"""
+    return _screenshot(body, "stocks.png"), dd
+
+
 _RENDER = {"chips": render, "morning": render_morning,
-           "chips_pre": render_chips_pre, "etf": render_etf}
+           "chips_pre": render_chips_pre, "etf": render_etf,
+           "stocks": render_stocks}
 
 
 def deliver(conn, cfg, notifier, key):
