@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS options_inst_cp (
     cp         TEXT NOT NULL,      -- 買權 / 賣權
     data_date  TEXT NOT NULL,
     foreign_net REAL, trust_net REAL, dealer_net REAL,          -- 未平倉淨口數
+    foreign_trade REAL, trust_trade REAL, dealer_trade REAL,    -- 全日交易買賣淨額(口)=日盤+夜盤
     fetched_at TEXT,
     PRIMARY KEY (cp, data_date)
 );
@@ -60,10 +61,11 @@ CREATE TABLE IF NOT EXISTS options_inst_cp (
 def init(conn):
     conn.executescript(SCHEMA)
     # 既有 DB 補欄(全日交易淨額);所有存取走具名欄位
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(options_inst)")}
-    for c in ("foreign_trade", "trust_trade", "dealer_trade"):
-        if c not in cols:
-            conn.execute(f"ALTER TABLE options_inst ADD COLUMN {c} REAL")
+    for t in ("options_inst", "options_inst_cp"):
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({t})")}
+        for c in ("foreign_trade", "trust_trade", "dealer_trade"):
+            if c not in cols:
+                conn.execute(f"ALTER TABLE {t} ADD COLUMN {c} REAL")
 
 
 # ================================================================ 抓取
@@ -118,16 +120,22 @@ def fetch(conn):
         html = taifex.get(CP_URL)
         dd = taifex.inst_date(html)
         cp = taifex.parse_inst_cp(html).get(INST_CONTRACT) or {}
+        cpt = taifex.parse_inst_cp(html, 4).get(INST_CONTRACT) or {}  # 全日交易淨
         if not dd or not cp:
             raise RuntimeError("買賣權分計頁解析失敗")
         store.save_raw(NAME, dd, "callsAndPuts", "html", html.encode("utf-8"))
         now = store.now()
         with conn:
             for side, who in cp.items():
+                t = cpt.get(side, {})
                 conn.execute(
-                    "INSERT OR REPLACE INTO options_inst_cp VALUES (?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO options_inst_cp "
+                    "(cp,data_date,foreign_net,trust_net,dealer_net,"
+                    "foreign_trade,trust_trade,dealer_trade,fetched_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
                     (side, dd, who.get("外資", 0), who.get("投信", 0),
-                     who.get("自營商", 0), now))
+                     who.get("自營商", 0), t.get("外資", 0), t.get("投信", 0),
+                     t.get("自營商", 0), now))
         print(f"[fetch] options_traders 買賣權分計: 資料日 {dd}")
     except Exception as e:
         fails.append("options_inst_cp")

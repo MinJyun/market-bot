@@ -338,6 +338,13 @@ def _sec_options(conn):
     cpp = {r[0]: r[1:] for r in conn.execute(
         "SELECT cp, foreign_net, trust_net, dealer_net FROM options_inst_cp "
         "WHERE data_date=?", (cppd,))} if cppd else {}
+    # Call/Put 全日交易淨(options_inst_cp)與夜盤(fut_night_opt),拆日盤=全日−夜盤
+    cpt = {r[0]: r[1:] for r in conn.execute(
+        "SELECT cp, foreign_trade, trust_trade, dealer_trade FROM options_inst_cp "
+        "WHERE data_date=?", (cpdd,))} if cpdd else {}
+    ncp = {r[0]: r[1:] for r in conn.execute(
+        "SELECT cp, foreign_net, trust_net, dealer_net FROM fut_night_opt "
+        "WHERE data_date=?", (cpdd,))} if cpdd else {}
 
     left = ['<div class="col" style="flex:0 0 360px">']
     if ic:
@@ -347,15 +354,6 @@ def _sec_options(conn):
         left.append('<div class="colhd">三大法人淨(不分買賣權)</div>'
                     '<table><tr><th>身份</th><th class="num">淨部位(口)</th>'
                     '<th class="num">前日Δ</th></tr>' + rows + '</table>')
-    # 今日交易拆日盤/夜盤(全日交易淨額 − 夜盤Call+Put交易淨額),不分買賣權
-    ot = conn.execute(
-        "SELECT foreign_trade,trust_trade,dealer_trade FROM options_inst "
-        "WHERE data_date=?", (idd,)).fetchone()
-    if ot and ot[0] is not None:
-        nr = conn.execute("SELECT foreign_net,trust_net,dealer_net "
-                          "FROM fut_night_opt WHERE data_date=?", (idd,)).fetchall()
-        onight = [sum(r[i] for r in nr) for i in range(3)] if nr else None
-        left.append(_trade_table(ot, onight, "今日交易(不分買賣權,口)"))
     if cps:
         def cpcell(side, i):
             v = cps[side][i]
@@ -374,7 +372,8 @@ def _sec_options(conn):
     left.append("</div>")
 
     cols = ["".join(left)]
-    for disp, tone in (("臺指Call", "#eef4ff"), ("臺指Put", "#fdeeee")):
+    for disp, side, tone in (("臺指Call", "買權", "#eef4ff"),
+                             ("臺指Put", "賣權", "#fdeeee")):
         lt = conn.execute("SELECT buy5,buy10,sell5,sell10,oi FROM options_lt "
                           "WHERE contract=? AND data_date=?",
                           (disp, dates[0] if dates else "")).fetchone()
@@ -388,9 +387,14 @@ def _sec_options(conn):
         def bscell(v, i):
             return (f'{v:,.0f}<span class="chgsmall">{_sgn(v - ltp[i])}</span>'
                     if ltp else f'{v:,.0f}')
+        # 該權別今日交易拆日盤/夜盤(三大法人)
+        sf = cpt.get(side)
+        thtml = (_trade_table(sf, ncp.get(side), "今日交易·三大法人(口)")
+                 if sf and sf[0] is not None else "")
         cols.append(f"""
         <div class="col" style="background:{tone}">
           <div class="colhd">{disp}<span class="oi">未平倉 {oi:,.0f} 口</span></div>
+          {thtml}
           <table><tr><th>特定法人</th><th class="num">買(前日Δ)</th><th class="num">賣(前日Δ)</th></tr>
             <tr><td>前五大</td><td class="num">{bscell(b5, 0)}</td><td class="num">{bscell(s5, 2)}</td></tr>
             <tr><td>前十大</td><td class="num">{bscell(b10, 1)}</td><td class="num">{bscell(s10, 3)}</td></tr>

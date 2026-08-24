@@ -125,11 +125,12 @@ def parse_inst_flow_cp(html):
     return out
 
 
-def parse_inst_cp(html):
+def parse_inst_cp(html, col=10):
     """解析三大法人「選擇權買賣權分計」頁,回傳 {商品: {權別: {身份: 淨口}}}。
 
-    結構同 parse_inst,多一層「買權/賣權」欄(同樣用 rowspan 省略);
-    取「未平倉餘額-買賣差額-口數」(身份別後第 11 個數字欄)。
+    結構同 parse_inst,多一層「買權/賣權」欄(同樣用 rowspan 省略);身份別後的
+    數字欄:col=10 為「未平倉餘額-買賣差額-口數」(預設);col=4 為「交易口數-
+    買賣淨額」(全日=日盤+夜盤)。
     """
     def cells(tr):
         return [re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", c))
@@ -149,7 +150,7 @@ def parse_inst_cp(html):
         else:
             continue
         if contract and cp:
-            out.setdefault(contract, {}).setdefault(cp, {})[who] = to_int(nums[10])
+            out.setdefault(contract, {}).setdefault(cp, {})[who] = to_int(nums[col])
     return out
 
 
