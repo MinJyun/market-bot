@@ -224,6 +224,27 @@ def _trow(label, val, chg):
             f'<td class="num">{c}</td></tr>')
 
 
+def _trade_table(full, night, title="今日交易(口)"):
+    """三大法人今日交易淨額拆日盤/夜盤:日盤=全日−夜盤,凸顯日盤方向。
+    full=(外資,投信,自營)全日交易淨;night 同結構的夜盤,無夜盤資料則傳 None。"""
+    rows = []
+    for i, who in ((0, "外資"), (1, "投信"), (2, "自營")):
+        fd = full[i] or 0
+        if night is not None:
+            ni = night[i] or 0
+            rows.append(f'<tr><td>{who}</td><td class="num">{_sgn(fd - ni)}</td>'
+                        f'<td class="num">{_sgn(ni)}</td>'
+                        f'<td class="num">{_sgn(fd)}</td></tr>')
+        else:
+            rows.append(f'<tr><td>{who}</td>'
+                        f'<td class="num flat">—</td><td class="num flat">—</td>'
+                        f'<td class="num">{_sgn(fd)}</td></tr>')
+    return (f'<div class="colhd" style="margin-top:8px">{title}</div>'
+            '<table><tr><th>身份</th><th class="num">日盤</th>'
+            '<th class="num">夜盤</th><th class="num">全日</th></tr>'
+            + "".join(rows) + '</table>')
+
+
 def _sec_futures(conn):
     from sources.futures_traders import CONTRACTS, _foreign_cost
     dates = [r[0] for r in conn.execute(
@@ -265,6 +286,19 @@ def _sec_futures(conn):
             oi_txt = f'<span class="oi">未平倉 {oi:,.0f} 口</span>'
         table = ('<table><tr><th>身份</th><th class="num">淨部位(口)</th>'
                  '<th class="num">前日Δ</th></tr>' + "".join(rows) + '</table>')
+        # 台指期:今日交易拆日盤/夜盤(全日交易淨額 − 夜盤交易淨額)
+        trade_html = ""
+        if disp == "台指期":
+            ft = conn.execute(
+                "SELECT foreign_trade,trust_trade,dealer_trade FROM futures_inst "
+                "WHERE contract='台指期' AND data_date=?",
+                (idates[0] if idates else "",)).fetchone()
+            if ft and ft[0] is not None:
+                nt = conn.execute(
+                    "SELECT foreign_net,trust_net,dealer_net FROM fut_night_inst "
+                    "WHERE contract='台指' AND data_date=?",
+                    (idates[0],)).fetchone()
+                trade_html = _trade_table(ft, nt)
         costhtml = ""
         if disp == "台指期" and cost:
             c, settle, pos, pnl, cstart = cost
@@ -274,7 +308,7 @@ def _sec_futures(conn):
                         f'{abs(pnl):,.0f} 億</span>'
                         f'<span class="muted">自{cstart[5:]}</span></div>')
         cols.append(f'<div class="col"><div class="colhd">{disp}{oi_txt}</div>'
-                    f'{table}{costhtml}</div>')
+                    f'{table}{trade_html}{costhtml}</div>')
     return f"""
     <div class="card">
       <div class="hd">📊 期貨機構籌碼<small>{curr[5:].replace('-', '/')}(未平倉多空淨額/口,+多 −空;前五/十大為特定法人淨)</small></div>
@@ -313,6 +347,15 @@ def _sec_options(conn):
         left.append('<div class="colhd">三大法人淨(不分買賣權)</div>'
                     '<table><tr><th>身份</th><th class="num">淨部位(口)</th>'
                     '<th class="num">前日Δ</th></tr>' + rows + '</table>')
+    # 今日交易拆日盤/夜盤(全日交易淨額 − 夜盤Call+Put交易淨額),不分買賣權
+    ot = conn.execute(
+        "SELECT foreign_trade,trust_trade,dealer_trade FROM options_inst "
+        "WHERE data_date=?", (idd,)).fetchone()
+    if ot and ot[0] is not None:
+        nr = conn.execute("SELECT foreign_net,trust_net,dealer_net "
+                          "FROM fut_night_opt WHERE data_date=?", (idd,)).fetchall()
+        onight = [sum(r[i] for r in nr) for i in range(3)] if nr else None
+        left.append(_trade_table(ot, onight, "今日交易(不分買賣權,口)"))
     if cps:
         def cpcell(side, i):
             v = cps[side][i]

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS futures_inst (
     contract   TEXT NOT NULL,
     data_date  TEXT NOT NULL,
     foreign_net REAL, trust_net REAL, dealer_net REAL,          -- 未平倉多空淨額(口)
+    foreign_trade REAL, trust_trade REAL, dealer_trade REAL,    -- 全日交易買賣淨額(口)=日盤+夜盤
     fetched_at TEXT,
     PRIMARY KEY (contract, data_date)
 );
@@ -65,6 +66,11 @@ CREATE TABLE IF NOT EXISTS fut_price (
 
 def init(conn):
     conn.executescript(SCHEMA)
+    # 既有 DB 補欄(全日交易淨額),新欄 ALTER 於表尾;所有存取走具名欄位
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(futures_inst)")}
+    for c in ("foreign_trade", "trust_trade", "dealer_trade"):
+        if c not in cols:
+            conn.execute(f"ALTER TABLE futures_inst ADD COLUMN {c} REAL")
 
 
 # ================================================================ 台指期價格
@@ -153,16 +159,23 @@ def fetch(conn):
         dd = taifex.inst_date(html)
         inst = {n: w for n, w in taifex.parse_inst(html).items()
                 if n in CONTRACTS}
+        trade = {n: w for n, w in taifex.parse_inst(html, 4).items()
+                 if n in CONTRACTS}   # 全日交易淨額(供拆日盤=全日-夜盤)
         if not dd or not inst:
             raise RuntimeError("三大法人頁解析失敗")
         store.save_raw(NAME, dd, "futContracts", "html", html.encode("utf-8"))
         now = store.now()
         with conn:
             for name, who in inst.items():
+                tr = trade.get(name, {})
                 conn.execute(
-                    "INSERT OR REPLACE INTO futures_inst VALUES (?,?,?,?,?,?)",
+                    "INSERT OR REPLACE INTO futures_inst "
+                    "(contract,data_date,foreign_net,trust_net,dealer_net,"
+                    "foreign_trade,trust_trade,dealer_trade,fetched_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
                     (CONTRACTS[name], dd, who.get("外資", 0), who.get("投信", 0),
-                     who.get("自營商", 0), now))
+                     who.get("自營商", 0), tr.get("外資", 0), tr.get("投信", 0),
+                     tr.get("自營商", 0), now))
         print(f"[fetch] futures_traders 三大法人: 資料日 {dd},{len(inst)} 契約")
     except Exception as e:
         fails.append("futures_inst")

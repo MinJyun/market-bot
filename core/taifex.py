@@ -47,11 +47,12 @@ def inst_date(html):
     return f"{m.group(1)}-{m.group(2)}-{m.group(3)}" if m else None
 
 
-def parse_inst(html):
+def parse_inst(html, col=10):
     """解析三大法人 Excel 頁,回傳 {商品名: {'外資'|'投信'|'自營商': 淨口}}。
 
-    表格用大寫 <TR>/<TD>;每商品三列(自營商/投信/外資),商品名稱用 rowspan;
-    取「未平倉餘額-多空淨額-口數」(身份別後第 11 個數字欄)。
+    表格用大寫 <TR>/<TD>;每商品三列(自營商/投信/外資),商品名稱用 rowspan。
+    身份別後的數字欄:col=10 為「未平倉餘額-多空淨額-口數」(預設);col=4 為
+    「交易口數-買賣淨額」(全日=日盤+夜盤的交易流量)。
     """
     def cells(tr):
         return [re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", c))
@@ -68,7 +69,7 @@ def parse_inst(html):
         else:
             continue
         if contract:
-            out.setdefault(contract, {})[who] = to_int(nums[10])
+            out.setdefault(contract, {})[who] = to_int(nums[col])
     return out
 
 

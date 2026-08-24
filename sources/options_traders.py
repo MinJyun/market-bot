@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS options_inst (
     contract   TEXT NOT NULL,
     data_date  TEXT NOT NULL,
     foreign_net REAL, trust_net REAL, dealer_net REAL,          -- 未平倉多空淨額(口)
+    foreign_trade REAL, trust_trade REAL, dealer_trade REAL,    -- 全日交易買賣淨額(口)=日盤+夜盤
     fetched_at TEXT,
     PRIMARY KEY (contract, data_date)
 );
@@ -58,6 +59,11 @@ CREATE TABLE IF NOT EXISTS options_inst_cp (
 
 def init(conn):
     conn.executescript(SCHEMA)
+    # 既有 DB 補欄(全日交易淨額);所有存取走具名欄位
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(options_inst)")}
+    for c in ("foreign_trade", "trust_trade", "dealer_trade"):
+        if c not in cols:
+            conn.execute(f"ALTER TABLE options_inst ADD COLUMN {c} REAL")
 
 
 # ================================================================ 抓取
@@ -90,14 +96,19 @@ def fetch(conn):
         html = taifex.get(INST_URL)
         dd = taifex.inst_date(html)
         inst = taifex.parse_inst(html).get(INST_CONTRACT) or {}
+        tr = taifex.parse_inst(html, 4).get(INST_CONTRACT) or {}  # 全日交易淨額
         if not dd or not inst:
             raise RuntimeError("三大法人頁解析失敗")
         store.save_raw(NAME, dd, "optContracts", "html", html.encode("utf-8"))
         with conn:
             conn.execute(
-                "INSERT OR REPLACE INTO options_inst VALUES (?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO options_inst "
+                "(contract,data_date,foreign_net,trust_net,dealer_net,"
+                "foreign_trade,trust_trade,dealer_trade,fetched_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
                 (INST_CONTRACT, dd, inst.get("外資", 0), inst.get("投信", 0),
-                 inst.get("自營商", 0), store.now()))
+                 inst.get("自營商", 0), tr.get("外資", 0), tr.get("投信", 0),
+                 tr.get("自營商", 0), store.now()))
         print(f"[fetch] options_traders 三大法人: 資料日 {dd}")
     except Exception as e:
         fails.append("options_inst")
