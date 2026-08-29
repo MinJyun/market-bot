@@ -226,35 +226,37 @@ def _fmt_range(bp):
 
 
 def build_message(conn):
-    """早報只講最近一次會議:機率最高的兩個區間 + 前一快照的變化。"""
+    """早報只講最近一次會議,但該次所有有機率的檔位都列出(不變、升降息、
+    多碼),依目標區間由低到高排序 — 與 CME 表格的排法一致。"""
     row = conn.execute(
         "SELECT data_date, meeting_date FROM fedwatch"
         " ORDER BY data_date DESC, meeting_date ASC LIMIT 1").fetchone()
-    if not row:
+    base = conn.execute(
+        "SELECT exp_effr FROM fedwatch_rate WHERE data_date=(SELECT"
+        " MAX(data_date) FROM fedwatch) AND meeting_date='current'").fetchone()
+    if not row or not base:
         return None, {}
     snap, meeting = row
-    cur = dict(conn.execute(
+    cur_bp = int(base[0] * 100 // 25 * 25)      # EFFR 落在哪個 25bp 網格
+    buckets = conn.execute(
         "SELECT bucket_bp, prob FROM fedwatch WHERE data_date=? AND"
-        " meeting_date=?", (snap, meeting)).fetchall())
+        " meeting_date=? AND prob>=0.0005 ORDER BY bucket_bp",
+        (snap, meeting)).fetchall()
+    if not buckets:
+        return None, {}
     prev_snap = conn.execute(
         "SELECT MAX(data_date) FROM fedwatch WHERE data_date<?",
         (snap,)).fetchone()[0]
     prev = dict(conn.execute(
         "SELECT bucket_bp, prob FROM fedwatch WHERE data_date=? AND"
         " meeting_date=?", (prev_snap, meeting)).fetchall()) if prev_snap else {}
-    base = conn.execute(
-        "SELECT exp_effr FROM fedwatch_rate WHERE data_date=? AND"
-        " meeting_date='current'", (snap,)).fetchone()
-    top = sorted(cur.items(), key=lambda kv: -kv[1])[:2]
-    if not top:
-        return None, {}
     md = dt.date.fromisoformat(meeting)
     lines = [f"🏛 FedWatch {md.month}/{md.day} 會議"]
-    for bp, p in top:
-        chg = ""
-        if bp in prev:
-            chg = f"（{(p - prev[bp]) * 100:+.1f}pp）"
-        lines.append(f"{_fmt_range(bp)} {p * 100:.1f}%{chg}")
-    if base:
-        lines.append(f"現行 EFFR {base[0]:.2f}%")
+    for bp, p in buckets:
+        steps = (bp - cur_bp) // 25
+        label = "不變" if steps == 0 else (f"升{steps}碼" if steps > 0
+                                           else f"降{-steps}碼")
+        chg = f"（{(p - prev[bp]) * 100:+.1f}pp）" if bp in prev else ""
+        lines.append(f"{label} {_fmt_range(bp)} {p * 100:.1f}%{chg}")
+    lines.append(f"現行 {_fmt_range(cur_bp)}、EFFR {base[0]:.2f}%")
     return "\n".join(lines), {"fedwatch": snap}

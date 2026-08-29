@@ -426,40 +426,51 @@ def _sec_pc(conn):
 
 
 # ================================================================ 早上:總經＋夜盤
-def _fedwatch_tile(conn):
-    """最近一次 FOMC 會議機率最高的檔位,做成一格 tile(含前一快照變化)。"""
+def _fedwatch_block(conn):
+    """最近一次 FOMC 會議的完整機率分布:不變、升降息、多碼皆列出。"""
     row = conn.execute(
         "SELECT data_date, meeting_date FROM fedwatch"
         " ORDER BY data_date DESC, meeting_date ASC LIMIT 1").fetchone()
-    if not row:
+    effr = conn.execute(
+        "SELECT exp_effr FROM fedwatch_rate WHERE data_date=(SELECT"
+        " MAX(data_date) FROM fedwatch) AND meeting_date='current'").fetchone()
+    if not row or not effr:
         return ""
     snap, meeting = row
-    top = conn.execute(
+    cur_bp = int(effr[0] * 100 // 25 * 25)      # EFFR 落在哪個 25bp 網格
+    buckets = conn.execute(
         "SELECT bucket_bp, prob FROM fedwatch WHERE data_date=? AND"
-        " meeting_date=? ORDER BY prob DESC LIMIT 1", (snap, meeting)).fetchone()
-    effr = conn.execute(
-        "SELECT exp_effr FROM fedwatch_rate WHERE data_date=? AND"
-        " meeting_date='current'", (snap,)).fetchone()
-    if not top or not effr:
+        " meeting_date=? AND prob>=0.0005 ORDER BY bucket_bp",
+        (snap, meeting)).fetchall()
+    if not buckets:
         return ""
-    bp, prob = top
-    steps = (bp - int(effr[0] * 100 // 25 * 25)) // 25
-    label = "不變" if steps == 0 else (f"升{steps}碼" if steps > 0
-                                       else f"降{-steps}碼")
-    prev = conn.execute(
-        "SELECT prob FROM fedwatch WHERE meeting_date=? AND bucket_bp=?"
-        " AND data_date<? ORDER BY data_date DESC LIMIT 1",
-        (meeting, bp, snap)).fetchone()
-    if prev:
-        d = (prob - prev[0]) * 100
-        cls = "up" if d > 0 else ("dn" if d < 0 else "flat")
-        chg_txt = f"{d:+.1f}pp"
-    else:
-        cls, chg_txt = "flat", "—"
+    trs = []
+    for bp, p in buckets:
+        steps = (bp - cur_bp) // 25
+        label = "不變" if steps == 0 else (f"升{steps}碼" if steps > 0
+                                           else f"降{-steps}碼")
+        prev = conn.execute(
+            "SELECT prob FROM fedwatch WHERE meeting_date=? AND bucket_bp=?"
+            " AND data_date<? ORDER BY data_date DESC LIMIT 1",
+            (meeting, bp, snap)).fetchone()
+        if prev:
+            d = (p - prev[0]) * 100
+            cls = "up" if d > 0 else ("dn" if d < 0 else "flat")
+            chg = f"{d:+.1f}pp"
+        else:
+            cls, chg = "flat", "—"
+        name = f"<b>{label}</b>" if steps == 0 else label
+        trs.append(f'<tr><td>{name}</td>'
+                   f'<td>{bp / 100:.2f}-{(bp + 25) / 100:.2f}%</td>'
+                   f'<td class="num">{p * 100:.1f}%</td>'
+                   f'<td class="num {cls}">{chg}</td></tr>')
     md = meeting[5:].replace("-", "/").lstrip("0").replace("/0", "/")
-    return (f'<div class="mtile"><div class="mname">Fed {md} {label}</div>'
-            f'<div class="mval {cls}">{prob * 100:.1f}%</div>'
-            f'<div class="mchg {cls}">{chg_txt}</div></div>')
+    return (f'<div class="lbl">FedWatch · {md} FOMC(現行 '
+            f'{cur_bp / 100:.2f}-{(cur_bp + 25) / 100:.2f}%,'
+            f'EFFR {effr[0]:.2f}%)</div>'
+            '<table><tr><th>決議</th><th>目標區間</th>'
+            '<th class="num">機率</th><th class="num">前日Δ</th></tr>'
+            + "".join(trs) + '</table>')
 
 
 def _sec_macro(conn):
@@ -489,7 +500,6 @@ def _sec_macro(conn):
             f'<div class="mtile"><div class="mname">{name}</div>'
             f'<div class="mval {cls}">{v:,.{dec}f}{suffix}</div>'
             f'<div class="mchg {cls}">{chg_txt}</div></div>')
-    tiles.append(_fedwatch_tile(conn))
     if not tiles:
         return "", None
     fx = latest2("USDTWD")
@@ -498,7 +508,8 @@ def _sec_macro(conn):
     html = f"""
     <div class="card">
       <div class="hd">🌍 國際總經<small>{dd[5:].replace('-', '/')}(美股為前一收盤)</small></div>
-      <div class="bd"><div class="mgrid">{''.join(tiles)}</div></div>
+      <div class="bd"><div class="mgrid">{''.join(tiles)}</div>
+      {_fedwatch_block(conn)}</div>
     </div>"""
     return html, dd
 
