@@ -64,11 +64,13 @@ def fetch(conn):
     fails = []
     # 1) 夜盤行情(近月開高低收/量)
     try:
+        # 週五晚的夜盤歸屬「次一交易日」(下週一),查詢範圍需延伸到未來
+        # 幾天,週六早上才抓得到剛收盤的那節
         start = date.today() - timedelta(days=4)
         raw = taifex.get_bytes(URL, data={
             "down_type": "1", "commodity_id": "TX",
             "queryStartDate": f"{start:%Y/%m/%d}",
-            "queryEndDate": f"{date.today():%Y/%m/%d}"})
+            "queryEndDate": f"{date.today() + timedelta(days=4):%Y/%m/%d}"})
         text = raw.decode("big5", errors="replace")
         best = {}  # dd -> (volume, row)
         for row in csv.reader(io.StringIO(text)):
