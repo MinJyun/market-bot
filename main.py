@@ -19,9 +19,9 @@ from datetime import date, datetime
 
 from core import notify as notifier
 from core import store
-from sources import (active_etf, fut_night, futures_traders, inst_otc,
-                     inst_spot, inst_stock, macro, margin, market_index,
-                     my_chips, options_traders, pc_ratio)
+from sources import (active_etf, fedwatch, fut_night, futures_traders,
+                     inst_otc, inst_spot, inst_stock, macro, margin,
+                     market_index, my_chips, options_traders, pc_ratio)
 
 # (去重/推播目標 key, md 區塊標題, 成員來源)。每組合併成一則 LINE。
 # my_chips 只寫 Google Sheets、不出 LINE(build_message 恆回 None)。
@@ -31,7 +31,7 @@ GROUPS = [
                           futures_traders, options_traders, pc_ratio,
                           my_chips]),
     ("stocks", "個股籌碼", [inst_stock]),
-    ("morning", "國際總經與夜盤", [macro, fut_night]),
+    ("morning", "國際總經與夜盤", [macro, fedwatch, fut_night]),
     # 先行版:期貨/選擇權機構籌碼 15 點多公布即出圖,不等融資等較晚項目。
     # 成員與 chips 重疊(只重出這幾塊),推播/去重走獨立 key。
     ("chips_pre", "期貨選擇權先行版", [futures_traders, options_traders, pc_ratio]),

@@ -426,6 +426,42 @@ def _sec_pc(conn):
 
 
 # ================================================================ 早上:總經＋夜盤
+def _fedwatch_tile(conn):
+    """最近一次 FOMC 會議機率最高的檔位,做成一格 tile(含前一快照變化)。"""
+    row = conn.execute(
+        "SELECT data_date, meeting_date FROM fedwatch"
+        " ORDER BY data_date DESC, meeting_date ASC LIMIT 1").fetchone()
+    if not row:
+        return ""
+    snap, meeting = row
+    top = conn.execute(
+        "SELECT bucket_bp, prob FROM fedwatch WHERE data_date=? AND"
+        " meeting_date=? ORDER BY prob DESC LIMIT 1", (snap, meeting)).fetchone()
+    effr = conn.execute(
+        "SELECT exp_effr FROM fedwatch_rate WHERE data_date=? AND"
+        " meeting_date='current'", (snap,)).fetchone()
+    if not top or not effr:
+        return ""
+    bp, prob = top
+    steps = (bp - int(effr[0] * 100 // 25 * 25)) // 25
+    label = "不變" if steps == 0 else (f"升{steps}碼" if steps > 0
+                                       else f"降{-steps}碼")
+    prev = conn.execute(
+        "SELECT prob FROM fedwatch WHERE meeting_date=? AND bucket_bp=?"
+        " AND data_date<? ORDER BY data_date DESC LIMIT 1",
+        (meeting, bp, snap)).fetchone()
+    if prev:
+        d = (prob - prev[0]) * 100
+        cls = "up" if d > 0 else ("dn" if d < 0 else "flat")
+        chg_txt = f"{d:+.1f}pp"
+    else:
+        cls, chg_txt = "flat", "—"
+    md = meeting[5:].replace("-", "/").lstrip("0").replace("/0", "/")
+    return (f'<div class="mtile"><div class="mname">Fed {md} {label}</div>'
+            f'<div class="mval {cls}">{prob * 100:.1f}%</div>'
+            f'<div class="mchg {cls}">{chg_txt}</div></div>')
+
+
 def _sec_macro(conn):
     def latest2(sym):
         return conn.execute(
@@ -453,6 +489,7 @@ def _sec_macro(conn):
             f'<div class="mtile"><div class="mname">{name}</div>'
             f'<div class="mval {cls}">{v:,.{dec}f}{suffix}</div>'
             f'<div class="mchg {cls}">{chg_txt}</div></div>')
+    tiles.append(_fedwatch_tile(conn))
     if not tiles:
         return "", None
     fx = latest2("USDTWD")
