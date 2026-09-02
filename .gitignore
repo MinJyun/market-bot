@@ -3,3 +3,7 @@ __pycache__/
 line_config.json
 .DS_Store
 exports/
+.env
+# 分點資料庫:6 GB、可重抓,且 -wal 曾長到 816 MB。daily.sh 的
+# `git add -A data` 會連 -wal/-shm 一起抓進去(2026-09-01 已誤commit 8.4 MB)
+data/broker.db*
