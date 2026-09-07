@@ -7,3 +7,8 @@ exports/
 # 分點資料庫:6 GB、可重抓,且 -wal 曾長到 816 MB。daily.sh 的
 # `git add -A data` 會連 -wal/-shm 一起抓進去(2026-09-01 已誤commit 8.4 MB)
 data/broker.db*
+# 籌碼資料庫:原本有進版控(17 MB 尚可),但 2026-09-06 回補一年後漲到 105 MB,
+# 而 daily.sh 每天把整檔 commit 一次 → 推播累積 198 MB 推不出去,
+# core/dashboard.py 的 `git push`(60 秒)超時,五組推圖全退回文字。
+# 資料可重抓,改為不進版控(與 broker.db 一致)。
+data/market.db*

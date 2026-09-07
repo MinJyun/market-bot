@@ -849,8 +849,12 @@ def deliver(conn, cfg, notifier, key):
     r = subprocess.run(["git", "commit", "-q", "-m", f"{png_path.stem} {dd}"],
                        cwd=base, capture_output=True)
     if r.returncode == 0:  # 有新內容才需要 push
+        # push 會把累積的 commit 一起推,不只這張 PNG。60 秒曾因 market.db
+        # (105 MB)每日整檔入庫累積成 198 MB 而超時,五組推圖整天退回文字。
+        # 該根因已解(market.db 改為不進版控),這裡放寬是備援:網路一時慢
+        # 不該讓當天沒圖。
         subprocess.run(["git", "push", "-q"], cwd=base, check=True,
-                       capture_output=True, timeout=60)
+                       capture_output=True, timeout=300)
     url = RAW_URL.format(dd=date.today().isoformat(), name=png_path.name)
     notifier.push_image(cfg, key, url)
     print(f"[dashboard] {key} 已推播圖片 {rel}")
