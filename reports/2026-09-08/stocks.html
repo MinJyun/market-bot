@@ -1,0 +1,86 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+* { margin:0; padding:0; box-sizing:border-box;
+    font-family:'PingFang TC','Heiti TC',sans-serif; }
+body { width:1020px; background:#eef1f6; padding:10px; }
+.row { display:flex; gap:10px; margin-bottom:10px; }
+.card { background:#fff; border-radius:10px; overflow:hidden; flex:1;
+        box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.hd { background:#1a2f5e; color:#fff; font-size:17px; font-weight:700;
+      padding:8px 14px; }
+.hd small { font-weight:400; opacity:.85; margin-left:8px; font-size:13px; }
+.bd { padding:10px 14px; }
+.up { color:#d0342c; } .dn { color:#1a8a4a; } .flat { color:#666; }
+table { width:100%; border-collapse:collapse; font-size:15px; }
+th { color:#555; font-weight:600; text-align:left; padding:5px 4px;
+     border-bottom:1px solid #dde; font-size:13px; }
+td { padding:5px 4px; border-bottom:1px solid #f0f2f6; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.big { font-size:34px; font-weight:800; letter-spacing:.5px; }
+.mid { font-size:20px; font-weight:700; }
+.lbl { color:#667; font-size:13px; margin-top:8px; }
+.bars { display:flex; align-items:flex-end; gap:14px; height:120px;
+        margin:14px 6px 4px; }
+.bargrp { flex:1; display:flex; flex-direction:column; align-items:center;
+          height:100%; justify-content:flex-end; }
+.barv { font-size:13px; font-weight:700; margin-bottom:2px; }
+.bar { width:34px; border-radius:3px 3px 0 0; }
+.barn { font-size:13px; color:#555; margin-top:4px; }
+.cols { display:flex; gap:10px; }
+.col { flex:1; border:1px solid #e2e6ee; border-radius:8px; padding:8px 10px; }
+.colhd { text-align:center; font-weight:700; font-size:16px; padding:4px 0 6px; }
+.kv { display:flex; justify-content:space-between; font-size:14.5px;
+      padding:2.5px 0; gap:6px; }
+.kv span:first-child { white-space:nowrap; color:#445; }
+.kv b { font-variant-numeric:tabular-nums; text-align:right;
+        white-space:nowrap; }
+.sep { border-top:1px dashed #ccd3e0; margin:6px 0; }
+.donutwrap { display:flex; align-items:center; gap:14px; flex:1; }
+.donut { width:110px; height:110px; border-radius:50%; position:relative; }
+.donut .hole { position:absolute; inset:18px; background:#fff;
+               border-radius:50%; display:flex; align-items:center;
+               justify-content:center; font-weight:800; font-size:17px; }
+.legend { font-size:13.5px; line-height:1.7; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:2px;
+       margin-right:5px; }
+.note { color:#778; font-size:12px; padding:2px 6px 8px; }
+.mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.mtile { border:1px solid #e2e6ee; border-radius:8px; padding:9px 12px; }
+.mname { color:#667; font-size:13.5px; }
+.mval { font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;
+        line-height:1.15; }
+.mchg { font-size:14px; font-weight:700; }
+.etfcol { column-count:2; column-gap:10px; }
+.etfcol .card { flex:none; margin-bottom:10px; break-inside:avoid; }
+.etfrow { display:flex; justify-content:space-between; gap:10px;
+          font-size:14px; padding:2.5px 0; }
+.etfrow span { color:#334; }
+.etfrow b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.etfsub { font-size:13px; font-weight:700; color:#556; margin:6px 0 1px; }
+.etffut { font-size:13px; color:#7a5; font-weight:700; padding:2px 0; }
+.etfflat { color:#889; font-size:13.5px; padding:3px 0; }
+.banner { background:#1a2f5e; color:#fff; font-size:19px; font-weight:800;
+          padding:9px 14px; border-radius:10px; margin-bottom:10px; }
+.banner small { font-weight:400; opacity:.85; font-size:14px; margin-left:8px; }
+.oi { font-weight:400; font-size:12.5px; color:#889; margin-left:6px; }
+.subnote { font-size:12px; color:#556; padding:7px 2px 1px; text-align:center; }
+.muted { color:#8894a5; font-size:11.5px; margin-left:5px; }
+.chgsmall { font-size:11.5px; margin-left:4px; }
+.cols table { font-size:14px; }
+.cols th, .cols td { padding:4px 4px; }
+</style></head><body>
+    <div class="banner">📊 個股籌碼<small>09/08 三大法人買賣超前五</small></div>
+    <div class="row">
+    <div class="card">
+      <div class="hd">📊 上市個股·法人買賣超<small>09/08(張)</small></div>
+      <div class="bd"><div class="cols"><div class="col"><div class="colhd">三大法人</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>華邦電<span class="muted">2344</span></span><b class="up">+97,692張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>友達<span class="muted">2409</span></span><b class="up">+90,011張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>南亞科<span class="muted">2408</span></span><b class="up">+34,985張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>臺企銀<span class="muted">2834</span></span><b class="up">+26,767張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="up">+18,272張</b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>聯電<span class="muted">2303</span></span><b class="dn">-58,446張</b></div><div class="etfrow"><span>群創<span class="muted">3481</span></span><b class="dn">-44,675張</b></div><div class="etfrow"><span>緯創<span class="muted">3231</span></span><b class="dn">-43,345張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>仁寶<span class="muted">2324</span></span><b class="dn">-29,070張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>英業達<span class="muted">2356</span></span><b class="dn">-17,887張<span class="chgsmall">連2賣</span></b></div></div><div class="col"><div class="colhd">外資</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>華邦電<span class="muted">2344</span></span><b class="up">+92,597張<span class="chgsmall">連3買</span></b></div><div class="etfrow"><span>友達<span class="muted">2409</span></span><b class="up">+85,223張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>南亞科<span class="muted">2408</span></span><b class="up">+34,280張<span class="chgsmall">連3買</span></b></div><div class="etfrow"><span>臺企銀<span class="muted">2834</span></span><b class="up">+26,848張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>第一金<span class="muted">2892</span></span><b class="up">+16,065張</b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>聯電<span class="muted">2303</span></span><b class="dn">-63,878張</b></div><div class="etfrow"><span>緯創<span class="muted">3231</span></span><b class="dn">-46,059張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>群創<span class="muted">3481</span></span><b class="dn">-42,073張</b></div><div class="etfrow"><span>仁寶<span class="muted">2324</span></span><b class="dn">-28,275張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>英業達<span class="muted">2356</span></span><b class="dn">-18,178張<span class="chgsmall">連2賣</span></b></div></div><div class="col"><div class="colhd">投信</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="up">+15,114張<span class="chgsmall">連11買</span></b></div><div class="etfrow"><span>玉山金<span class="muted">2884</span></span><b class="up">+11,346張<span class="chgsmall">連16買</span></b></div><div class="etfrow"><span>彰銀<span class="muted">2801</span></span><b class="up">+8,441張<span class="chgsmall">連3買</span></b></div><div class="etfrow"><span>中信金<span class="muted">2891</span></span><b class="up">+5,209張<span class="chgsmall">連8買</span></b></div><div class="etfrow"><span>聯電<span class="muted">2303</span></span><b class="up">+4,779張<span class="chgsmall">連3買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>華通<span class="muted">2313</span></span><b class="dn">-7,169張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>遠東新<span class="muted">1402</span></span><b class="dn">-2,890張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>凱基金<span class="muted">2883</span></span><b class="dn">-1,782張</b></div><div class="etfrow"><span>緯穎<span class="muted">6669</span></span><b class="dn">-1,638張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>永豐金<span class="muted">2890</span></span><b class="dn">-1,631張</b></div></div></div></div>
+    </div></div><div class="row">
+    <div class="card">
+      <div class="hd">📊 上櫃個股·法人買賣超<small>09/08(張)</small></div>
+      <div class="bd"><div class="cols"><div class="col"><div class="colhd">三大法人</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>富喬<span class="muted">1815</span></span><b class="up">+11,596張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>宏遠證<span class="muted">6015</span></span><b class="up">+2,420張</b></div><div class="etfrow"><span>威剛<span class="muted">3260</span></span><b class="up">+2,060張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>華星光<span class="muted">4979</span></span><b class="up">+2,012張</b></div><div class="etfrow"><span>漢達<span class="muted">6620</span></span><b class="up">+1,058張<span class="chgsmall">連5買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>頎邦<span class="muted">6147</span></span><b class="dn">-8,139張</b></div><div class="etfrow"><span>鈺創<span class="muted">5351</span></span><b class="dn">-7,070張</b></div><div class="etfrow"><span>合晶<span class="muted">6182</span></span><b class="dn">-4,986張</b></div><div class="etfrow"><span>環球晶<span class="muted">6488</span></span><b class="dn">-2,512張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>中美晶<span class="muted">5483</span></span><b class="dn">-2,222張</b></div></div><div class="col"><div class="colhd">外資</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>宏遠證<span class="muted">6015</span></span><b class="up">+2,420張</b></div><div class="etfrow"><span>威剛<span class="muted">3260</span></span><b class="up">+1,398張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>華星光<span class="muted">4979</span></span><b class="up">+974張</b></div><div class="etfrow"><span>創威<span class="muted">6530</span></span><b class="up">+917張</b></div><div class="etfrow"><span>世紀*<span class="muted">5314</span></span><b class="up">+883張<span class="chgsmall">連9買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>頎邦<span class="muted">6147</span></span><b class="dn">-7,182張</b></div><div class="etfrow"><span>鈺創<span class="muted">5351</span></span><b class="dn">-7,030張</b></div><div class="etfrow"><span>合晶<span class="muted">6182</span></span><b class="dn">-4,538張</b></div><div class="etfrow"><span>世界<span class="muted">5347</span></span><b class="dn">-2,984張</b></div><div class="etfrow"><span>穩懋<span class="muted">3105</span></span><b class="dn">-2,825張<span class="chgsmall">連5賣</span></b></div></div><div class="col"><div class="colhd">投信</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>富喬<span class="muted">1815</span></span><b class="up">+10,541張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>穩懋<span class="muted">3105</span></span><b class="up">+3,128張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>世界<span class="muted">5347</span></span><b class="up">+2,292張<span class="chgsmall">連4買</span></b></div><div class="etfrow"><span>華星光<span class="muted">4979</span></span><b class="up">+1,196張</b></div><div class="etfrow"><span>力旺<span class="muted">3529</span></span><b class="up">+605張<span class="chgsmall">連4買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>雙鴻<span class="muted">3324</span></span><b class="dn">-513張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>台燿<span class="muted">6274</span></span><b class="dn">-415張<span class="chgsmall">連9賣</span></b></div><div class="etfrow"><span>聯亞<span class="muted">3081</span></span><b class="dn">-263張<span class="chgsmall">連5賣</span></b></div><div class="etfrow"><span>頎邦<span class="muted">6147</span></span><b class="dn">-172張</b></div><div class="etfrow"><span>沛亨<span class="muted">6291</span></span><b class="dn">-160張<span class="chgsmall">連2賣</span></b></div></div></div></div>
+    </div></div><div class="row">
+    <div class="card">
+      <div class="hd">🎯 ETF關注股<small>主動ETF持股 ∩ 三大法人買賣超</small></div>
+      <div class="bd"><div class="etfcol"><div class="etfrow"><span>華邦電<span class="muted">2344</span></span><b class="up">+97,692張</b></div><div class="etfrow"><span>聯電<span class="muted">2303</span></span><b class="dn">-58,446張</b></div><div class="etfrow"><span>緯創<span class="muted">3231</span></span><b class="dn">-43,345張</b></div><div class="etfrow"><span>南亞科<span class="muted">2408</span></span><b class="up">+34,985張</b></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="up">+18,272張</b></div><div class="etfrow"><span>玉山金<span class="muted">2884</span></span><b class="up">+16,818張</b></div><div class="etfrow"><span>鴻海<span class="muted">2317</span></span><b class="dn">-14,383張</b></div><div class="etfrow"><span>廣達<span class="muted">2382</span></span><b class="dn">-13,412張</b></div></div></div>
+    </div></div>
+    </body></html>
