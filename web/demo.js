@@ -83,15 +83,35 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
   const vTop = HP + GAP, vBot = vTop + HV;
   const yV = v => vBot - (v / vMax) * HV;
 
+  // 平盤(昨收)。價格軸的範圍已在 rebuild() 把它包進去,所以一定畫得到 ——
+  // 整天都在平盤下(例如 2301 昨收 291、最高只到 283)時,這條線落在圖頂,
+  // 那個「跳空後沒回去過」本身就是要看的資訊。
+  const prev = D.quote.prev_close;
+  const pc = v => (v - prev) / prev * 100;          // 距平盤 %
+  // 正負號要看 pc(v) 而不是 v —— v 是價格恆為正,拿它判斷會讓平盤以下的價位
+  // 印成 "+4.75%"(實際是 −4.75%)。交給 fmt 判斷就不會再錯一次。
+  const pcs = v => fmt(pc(v), 2) + "%";
+
   let s = `<svg viewBox="0 0 ${W} ${H}">`;
   // 價格格線:橫貫左右兩區,本身就是對齊的視覺證據
   for (let i = 0; i <= 5; i++) {
     const v = lo + (hi - lo) * i / 5, yy = y(v);
     s += `<line x1="${LAD.x}" y1="${yy}" x2="${FLO.x + FLO.w}" y2="${yy}"`
        + ` stroke="var(--line)" stroke-dasharray="2 5" opacity=".45"/>`
-       + `<text x="${FLO.x + FLO.w + 5}" y="${yy + 3}" font-size="10"`
-       + ` fill="var(--dim)">${v.toFixed(1)}</text>`;
+       + `<text x="${FLO.x + FLO.w + 5}" y="${yy}" font-size="10"`
+       + ` fill="var(--dim)">${v.toFixed(1)}</text>`
+       + `<text x="${FLO.x + FLO.w + 5}" y="${yy + 10}" font-size="9"`
+       + ` fill="var(--dim)" opacity=".8">${pcs(v)}</text>`;
   }
+  // 平盤線:比格線醒目,但不搶走成交價那條黃線
+  // 標籤放走勢區左上方,不放右邊 —— 右邊是格線的價格刻度,平盤幾乎必定
+  // 落在某條格線附近,兩個標籤會疊在一起(實測 297.0 與「平盤 295」重疊)。
+  const yp = y(prev);
+  s += `<line x1="${LAD.x}" y1="${yp}" x2="${FLO.x + FLO.w}" y2="${yp}"`
+     + ` stroke="var(--dim)" stroke-width="1.2" stroke-dasharray="7 4"`
+     + ` opacity=".9"/>`
+     + `<text x="${FLO.x + 4}" y="${yp - 4}" font-size="10"`
+     + ` fill="var(--dim)">平盤 ${prev}</text>`;
   // ---- 左:逐價位橫條(賣在左、買在右)
   s += `<line x1="${mid}" y1="${TOP}" x2="${mid}" y2="${HP}"`
      + ` stroke="var(--line)"/>`;
@@ -177,6 +197,7 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
       setH(b.c);
       const at = rows.find(r => Math.abs(r.p - b.c) < 0.001);
       showTip(`<b>${hhmm(b.t)}</b>　收 <b>${b.c}</b>`
+        + ` <span class="${cls(pc(b.c))}">${pcs(b.c)}</span>`
         + `<br>開 ${b.o} 高 ${b.h} 低 ${b.l}　量 ${numf(b.vol)} 張`
         + `<br>外盤 <b class="up">${numf(b.out)}</b>`
         + ` / 內盤 <b class="dn">${numf(b.in)}</b>`
@@ -200,6 +221,7 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
       const touched = bars.filter(b => b.l <= p && p <= b.h);
       const first = touched[0], last = touched[touched.length - 1];
       showTip(`<b>${p.toFixed(1)} 元</b>`
+        + ` <span class="${cls(pc(p))}">${pcs(p)}</span>`
         + `<br>${D.broker_name} 買 <b class="up">${numf(r.b / 1000)}</b>`
         + ` / 賣 <b class="dn">${numf(r.s / 1000)}</b> 張`
         + ` <span class="${r.b - r.s >= 0 ? 'up' : 'dn'}">(${
@@ -226,10 +248,12 @@ const wan = v => Math.round(v / 1e4);        // 元 → 萬
 function renderPicks(on) {
   $("#demo-picks").innerHTML = IDX.stocks.map(s => `
     <button data-sid="${s.stock_id}" aria-pressed="${s.stock_id === on}">
-      <div class="nm">${s.stock_id} ${s.name}</div>
+      <div class="nm">${s.stock_id} ${s.name} <span class="${cls(s.chg_pct)}">${
+        fmt(s.chg_pct, 2)}%</span></div>
       <div class="sub">相抵 ${yi(s.dt_amount)} 億 · 佔量 ${s.dt_pct}%</div>
-      <div class="sub">對稱 ${s.asym_pct}% · <span class="${cls(s.dt_pnl)}">${
-        fmt(wan(s.dt_pnl), 0)} 萬</span></div>
+      <div class="sub">振幅 ${s.range_pct}% · 對稱 ${s.asym_pct}%</div>
+      <div class="sub"><span class="${cls(s.dt_pnl)}">${
+        fmt(wan(s.dt_pnl), 0)} 萬（${fmt(s.dt_roi, 2)}%）</span></div>
     </button>`).join("");
   $("#demo-picks").querySelectorAll("button[data-sid]").forEach(b => {
     b.onclick = () => loadStock(b.dataset.sid);
@@ -259,7 +283,11 @@ export async function initDemo() {
     + `互相抵消掉的部分。篩選條件:相抵金額 ≥ <b>${p.min_amount} 億</b>、`
     + `相抵量佔該股日線成交量 ≥ <b>${p.min_pct}%</b>、`
     + `對稱度 |買−賣|÷相抵量 < <b>${p.max_asym}%</b>（越小越純粹是沖，`
-    + `不是邊沖邊建倉）。<br>`
+    + `不是邊沖邊建倉）、振幅 ≥ <b>${p.min_range}%</b>。<br>`
+    + `<b>為什麼要卡振幅</b>:把「相抵損益 ÷ 相抵金額」當這筆當沖的報酬率，`
+    + `它與振幅明顯同向 —— 台達電振幅 2.39%，進出 25.31 億只吃到 <b>0.05%</b>；`
+    + `信昌電振幅 13.56%，16.86 億吃到 <b>1.16%</b>，差 20 倍。`
+    + `相抵量最大的那檔不見得是有戲的那檔。<br>`
     + `<b>為什麼不用淨額排序</b>:當沖買賣相抵，淨額趨近 0 —— `
     + `台達電那天元大進出 1,572 張、淨額只有 +3 張，用淨額排會排到最底下。<br>`
     + `<b>口徑但書</b>:分點資料看不出是同一個客戶一買一賣，`
@@ -274,11 +302,13 @@ function render() {
   $("#demo-title").textContent =
     `${D.name}（${D.stock_id}）× ${D.broker_name}（${D.bno}）　${D.date}`;
   $("#demo-kpi").innerHTML =
-    `<div><div class="k">開</div><div class="v">${q.open}</div></div>
+    `<div><div class="k">平盤</div><div class="v dim">${q.prev_close}</div></div>
+     <div><div class="k">開</div><div class="v">${q.open}</div></div>
      <div><div class="k">高</div><div class="v up">${q.high}</div></div>
      <div><div class="k">低</div><div class="v dn">${q.low}</div></div>
      <div><div class="k">收</div><div class="v">${q.close} <span class="${
-       cls(q.spread)}">${fmt(q.spread, 2)}</span></div></div>
+       cls(q.spread)}">${fmt(q.chg_pct, 2)}%</span></div></div>
+     <div><div class="k">振幅</div><div class="v">${q.range_pct}%</div></div>
      <div><div class="k">成交量</div><div class="v">${
        numf(q.volume / 1000)} 張</div></div>
      <div><div class="k">相抵量</div><div class="v">${
@@ -290,6 +320,8 @@ function render() {
        fmt(m.net_sh / 1000, 0)} 張</div></div>
      <div><div class="k">相抵損益</div><div class="v ${cls(m.dt_pnl)}">${
        fmt(wan(m.dt_pnl), 0)} 萬</div></div>
+     <div><div class="k">相抵報酬率</div><div class="v ${cls(m.dt_roi)}">${
+       fmt(m.dt_roi, 2)}%</div></div>
      <div><div class="k">買/賣均價</div><div class="v">${
        (m.buy_vwap || 0).toFixed(2)} / ${(m.sell_vwap || 0).toFixed(2)}</div></div>
      <div><div class="k">逐筆成交</div><div class="v">${
@@ -298,9 +330,12 @@ function render() {
   const rebuild = () => {
     const sec = +$("#demo-bucket").value;
     const bars = bucketize(D.ticks, sec);
-    // 價格軸範圍取「走勢 + 該分點有進出的價位」的聯集,兩張圖才能真的對齊
+    // 價格軸範圍取「走勢 + 該分點有進出的價位 + 平盤」的聯集。
+    // 逐價位含零股,可能超出當日高低;平盤則可能整天沒被觸及(跳空),
+    // 兩者都要包進來,否則不是裁掉資料就是平盤線畫不出來。
     const ps = D.broker_price.map(r => r.p);
-    const lo = Math.min(q.low, ...ps), hi = Math.max(q.high, ...ps);
+    const lo = Math.min(q.low, q.prev_close, ...ps);
+    const hi = Math.max(q.high, q.prev_close, ...ps);
     // 當日累計 VWAP(逐桶推進),不是各桶自己的均價
     let cv = 0, ca = 0;
     const avg = bars.map(b => { cv += b.vol; ca += b.c * b.vol; return ca / cv; });
@@ -315,7 +350,8 @@ function render() {
   const tb = D.broker_price;
   const sum = (k) => tb.reduce((s, r) => s + r[k], 0);
   $("#demo-table").innerHTML =
-    `<table><tr><th>價位</th><th class="num">買(張)</th><th class="num">賣(張)</th>`
+    `<table><tr><th>價位</th><th class="num">距平盤</th>`
+    + `<th class="num">買(張)</th><th class="num">賣(張)</th>`
     + `<th class="num">淨(張)</th><th class="num">全市場買(張)</th>`
     + `<th class="num">${D.broker_name}佔比</th></tr>`
     // 內層變數不叫 m —— 外面的 m 是 D.metrics,同名會被遮住
@@ -324,14 +360,17 @@ function render() {
         // `|| 0` 是為了把 -0 變成 0:零股列(例如只賣 118 股)四捨五入後是
         // -0,fmt 會印出「-0」看起來像錯誤。-0 是 falsy,所以這樣就夠。
         const n = Math.round((r.b - r.s) / 1000) || 0;
+        const dp = (r.p - q.prev_close) / q.prev_close * 100;
         return `<tr><td>${r.p.toFixed(1)}</td>`
+          + `<td class="num ${cls(dp)}">${fmt(dp, 2)}%</td>`
           + `<td class="num up">${numf(r.b / 1000)}</td>`
           + `<td class="num dn">${numf(r.s / 1000)}</td>`
           + `<td class="num ${cls(n)}">${fmt(n, 0)}</td>`
           + `<td class="num dim">${numf(mk.b / 1000)}</td>`
           + `<td class="num dim">${mk.b ? (r.b / mk.b * 100).toFixed(0) + "%" : "—"}</td></tr>`;
       }).join("")
-    + `<tr><td><b>合計</b></td><td class="num up"><b>${numf(sum("b") / 1000)}</b></td>`
+    + `<tr><td><b>合計</b></td><td class="num dim">—</td>`
+    + `<td class="num up"><b>${numf(sum("b") / 1000)}</b></td>`
     + `<td class="num dn"><b>${numf(sum("s") / 1000)}</b></td>`
     + `<td class="num ${cls(sum("b") - sum("s"))}"><b>${
         fmt((sum("b") - sum("s")) / 1000, 0)}</b></td>`

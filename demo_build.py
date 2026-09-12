@@ -9,6 +9,23 @@
     當沖金額    = dt × (買均價+賣均價)/2   → 濾掉小型股的雜訊(使用者要的成交額條件)
     當沖佔量    = dt ÷ 日線成交量          → 這個分點在該股當沖裡的份量
     對稱度      = |買−賣| ÷ dt             → 越小越純粹是沖,不是邊沖邊建倉
+    振幅        = (最高−最低) ÷ 昨收        → 沒有振幅就沒有利潤空間
+
+**振幅門檻的理由(實測 2026-09-11 元大,不是猜的)**:把「相抵損益 ÷ 相抵金額」
+當成這筆當沖的報酬率,它與振幅明顯同向 ——
+
+    3624 光頡  振幅 15.42%   8.68 億 → −731 萬   0.84%
+    6173 信昌電 振幅 13.56%  16.86 億 → +1,962 萬 1.16%
+    3026 禾伸堂 振幅  8.22%   9.90 億 → +1,041 萬 1.05%
+    2303 聯電  振幅  2.81%  14.68 億 → −414 萬   0.28%
+    2308 台達電 振幅  2.39%  25.31 億 → −116 萬   0.05%
+    2357 華碩  振幅  1.82%   6.41 億 → −24 萬    0.04%
+
+台達電進出 25 億只吃到 0.05%,信昌電 16.86 億吃到 1.16%,差 20 倍。相抵量最大
+的那檔不見得是有戲的那檔,所以振幅要當門檻而不只是欄位。
+
+昨收用 `close − spread` 算(price 表的 spread 是當日漲跌點數),不另外查前一
+交易日 —— 少一次 join,而且遇到停牌、首日上市這些情況不會拿到錯的前一日。
 
 **分母一律用 price 表的日線成交量**,不是分點合計 —— 分點成交量系統性少於
 官方成交量(鉅額交易等未歸屬到分點,實測單日可差 41%)。
@@ -106,7 +123,7 @@ def stock_names():
     return out
 
 
-def screen(conn, date8, bno, min_amt, min_pct, max_asym, limit):
+def screen(conn, date8, bno, min_amt, min_pct, max_asym, min_range, limit):
     """挑出該分點當日「相抵量」最可觀的幾檔。回傳 dict 清單。"""
     rows = conn.execute("""
         SELECT b.stock_id,
@@ -127,18 +144,26 @@ def screen(conn, date8, bno, min_amt, min_pct, max_asym, limit):
         dt_amt = dt_sh * mid
         dt_pct = dt_sh * 100.0 / vol
         asym = abs(buy - sell) * 100.0 / dt_sh
-        if dt_amt < min_amt or dt_pct < min_pct or asym >= max_asym:
+        prev = cl - sp                      # 昨收 = 今收 − 當日漲跌點數
+        rng = (hi - lo) * 100.0 / prev if prev else 0
+        if (dt_amt < min_amt or dt_pct < min_pct or asym >= max_asym
+                or rng < min_range):
             continue
+        dt_pnl = round((sv - bv) * dt_sh) if bv and sv else 0
         out.append({
             "stock_id": sid,
             "dt_sh": dt_sh, "dt_amount": round(dt_amt),
             "dt_pct": round(dt_pct, 2), "asym_pct": round(asym, 1),
+            "prev_close": round(prev, 2), "range_pct": round(rng, 2),
+            "chg_pct": round(sp * 100.0 / prev, 2) if prev else 0,
+            # 相抵報酬率:這筆當沖賺賠佔投入金額多少。振幅門檻的理由就在這欄。
+            "dt_roi": round(dt_pnl * 100.0 / dt_amt, 2) if dt_amt else 0,
             "buy_sh": buy, "sell_sh": sell,
             "buy_vwap": bv, "sell_vwap": sv,
             "net_sh": buy - sell,
             # 相抵部分的已實現損益 =(賣均價−買均價)× 相抵股數。就是
             # web/server.py trade_pnl() 的已實現項;單日內不跨除權,不必過 adj_daily。
-            "dt_pnl": round((sv - bv) * dt_sh) if bv and sv else 0,
+            "dt_pnl": dt_pnl,
             "part_pct": round((buy + sell) * 50.0 / vol, 2),
             "volume": vol, "amount": amt,
             "open": op, "high": hi, "low": lo, "close": cl, "spread": sp,
@@ -199,6 +224,8 @@ def main():
                     help="相抵量佔日線成交量的門檻(%%)")
     ap.add_argument("--max-asym", type=float, default=20.0,
                     help="對稱度上限(%%);越小越純粹是沖")
+    ap.add_argument("--min-range", type=float, default=3.0,
+                    help="振幅下限(%%);沒有振幅就沒有利潤空間")
     args = ap.parse_args()
 
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
@@ -208,7 +235,7 @@ def main():
     date = f"{str(date8)[:4]}-{str(date8)[4:6]}-{str(date8)[6:]}"
 
     picks = screen(conn, int(date8), args.bno, args.min_amount * 1e8,
-                   args.min_pct, args.max_asym, args.limit)
+                   args.min_pct, args.max_asym, args.min_range, args.limit)
     if not picks:
         sys.exit(f"{date} 分點 {args.bno} 沒有符合條件的個股,放寬門檻再試")
 
@@ -219,7 +246,7 @@ def main():
 
     print(f"{date} 分點 {args.bno}({bname}):符合條件 {len(picks)} 檔"
           f"(相抵金額≥{args.min_amount}億、佔量≥{args.min_pct}%、"
-          f"對稱度<{args.max_asym}%)")
+          f"對稱度<{args.max_asym}%、振幅≥{args.min_range}%)")
     OUT.mkdir(parents=True, exist_ok=True)
     token = get_token()
 
@@ -240,10 +267,11 @@ def main():
             "bno": args.bno, "broker_name": bname,
             "quote": {k: r[k] for k in
                       ("open", "high", "low", "close", "spread",
-                       "volume", "amount")},
+                       "volume", "amount", "prev_close", "range_pct",
+                       "chg_pct")},
             "metrics": {k: r[k] for k in
                         ("dt_sh", "dt_amount", "dt_pct", "asym_pct", "net_sh",
-                         "dt_pnl", "part_pct", "buy_sh", "sell_sh",
+                         "dt_pnl", "dt_roi", "part_pct", "buy_sh", "sell_sh",
                          "buy_vwap", "sell_vwap")},
             "ticks": ticks, "ticks_after": after,
             "broker_price": mine, "market_price": market,
@@ -252,8 +280,9 @@ def main():
         index.append({"stock_id": sid, "name": names.get(sid, ""),
                       **{k: r[k] for k in
                          ("dt_sh", "dt_amount", "dt_pct", "asym_pct", "net_sh",
-                          "dt_pnl", "part_pct", "volume", "amount", "close",
-                          "spread")},
+                          "dt_pnl", "dt_roi", "part_pct", "volume", "amount",
+                          "close", "spread", "prev_close", "range_pct",
+                          "chg_pct")},
                       "ticks": len(ticks), "prices": len(mine)})
         kb = (OUT / f"{sid}.json").stat().st_size / 1024
         print(f"  [{i}/{len(picks)}] {sid} {names.get(sid,''):　<6}"
@@ -264,7 +293,7 @@ def main():
     (OUT / "index.json").write_text(json.dumps({
         "date": date, "bno": args.bno, "broker_name": bname,
         "params": {"min_amount": args.min_amount, "min_pct": args.min_pct,
-                   "max_asym": args.max_asym},
+                   "max_asym": args.max_asym, "min_range": args.min_range},
         "stocks": index,
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
