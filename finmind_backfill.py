@@ -23,6 +23,7 @@ end_date 給區間會回 400,只能逐日。所以請求數 = 股票數 × 交�
     python3 finmind_backfill.py --days 400          # 近約 13 個月
     python3 finmind_backfill.py                     # 回到 2021-06-30
     python3 finmind_backfill.py --stocks 30         # 只前 30 檔
+    python3 finmind_backfill.py --days 3 --force-days 2   # 近兩日無條件重抓覆蓋
 """
 import argparse, json, os, sqlite3, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -171,6 +172,8 @@ def main():
     ap.add_argument("--stocks", type=int, default=999, help="取股票池前 N 檔")
     ap.add_argument("--min-shares", type=int, default=MIN_SHARES,
                     help="非重點分點的入庫門檻,0 表示全留")
+    ap.add_argument("--force-days", type=int, default=0,
+                    help="近 N 個日曆日(含今天)忽略已抓紀錄、刪舊列後重抓")
     ap.add_argument("--workers", type=int, default=WORKERS, help="併發工作緒")
     ap.add_argument("--rate", type=int, default=RATE_PER_HOUR,
                     help="每小時請求上限(API 上限 6,000)")
@@ -193,9 +196,18 @@ def main():
     # 白天跑到當日會拿到空資料。若照常記為已完成,續傳會永久跳過那天
     # (2026-09-01 就這樣被跳掉)。7 天前以上的 0 列視為真的休市,保留。
     cutoff = int(f"{date.today() - timedelta(days=7):%Y%m%d}")
+    # --force-days:0 列的保護擋不住「抓到部分資料」—— rows>0 就永久記為完成。
+    # 兩輪制的第二輪用這個把近幾日無條件重抓覆蓋,不必猜「多少列才算完整」
+    # (實測分點買進佔官方成交量 59%~100% 都是正常值,門檻必誤判)。
+    force_from = (int(f"{date.today() - timedelta(days=args.force_days - 1):%Y%m%d}")
+                  if args.force_days > 0 else None)
+
+    def forced(dd):
+        return force_from is not None and dd >= force_from
+
     done = {(s, dd) for s, dd, n in
             conn.execute("SELECT stock_id, data_date, rows FROM fetched")
-            if n > 0 or dd < cutoff}
+            if (n > 0 or dd < cutoff) and not forced(dd)}
     # 日期外層、股票內層:中斷時已完成的日期是完整的(每天全部股票齊備),
     # 分析不會拿到「某天只有一半股票」的殘缺切片。
     todo = [(s, d) for d in days for s in stocks
@@ -204,7 +216,8 @@ def main():
     print(f"股票池 {args.universe}:{len(stocks)} 檔")
     print(f"待抓 {len(todo):,} 個(股票×日) | {args.workers} 工作緒 "
           f"@ {args.rate:,}/小時 → 預估 {len(todo)*interval/3600:.1f} 小時"
-          f" | 門檻 {args.min_shares} 股")
+          f" | 門檻 {args.min_shares} 股"
+          + (f" | 強制重抓 {force_from} 起" if force_from else ""))
 
     lock = threading.Lock()
     next_slot = [time.time()]
@@ -242,6 +255,11 @@ def main():
                 rows = aggregate(raw, args.min_shares)
                 # 寫入集中在主執行緒,避免 SQLite 跨執行緒問題
                 with conn:
+                    # 重抓日先清舊列:INSERT OR REPLACE 只蓋得掉同一個分點,
+                    # 蓋不掉前一輪多出來的分點(理論上不會有,但便宜就做)
+                    if forced(dd):
+                        conn.execute("DELETE FROM broker_daily WHERE "
+                                     "data_date=? AND stock_id=?", (dd, sid))
                     conn.execute("INSERT OR REPLACE INTO fetched VALUES (?,?,?)",
                                  (sid, dd, len(rows)))
                     if rows:
