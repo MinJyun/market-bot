@@ -1,4 +1,11 @@
-/** demo 分頁:日內走勢 × 分點逐價位(信昌電 6173 / 元大 9800 / 2026-09-11)。
+/** demo 分頁:某分點當日「相抵量」最大的幾檔個股 × 日內走勢 × 逐價位。
+ *
+ *  資料由 demo_build.py 產生(web/demo/index.json + 各股一檔),按需載入 ——
+ *  10 檔全部 1.8 MB,一次載完會讓開頁面卡住,而使用者一次只看一檔。
+ *
+ *  **為什麼篩「相抵量」不篩淨額**:這個分點有大戶在打大量當沖單,買賣幾乎
+ *  相抵,用淨額排序會把他排到最底下(2026-09-11 台達電進出 1,572 張、淨 +3 張)。
+ *  相抵量 = min(買, 賣),配上金額門檻濾掉小型股。口徑細節見 demo_build.py。
  *
  *  設計重點是**三個面板共用同一條價格軸**:
  *    左:分點在各價位的買賣(橫向長條,買在右、賣在左)
@@ -64,7 +71,14 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
   const mx = Math.max(...rows.map(r => Math.max(r.b, r.s)), 1);
   const half = LAD.w / 2 - 6;
   const mkt = {}; market.forEach(m => mkt[m.p] = m);
-  const bh = Math.max(1.5, (HP - TOP) / ((hi - lo) / 0.5 + 1) - 0.4);
+  // 長條高度 = 一個檔位在價格軸上的高度。**檔位不能寫死 0.5** —— 台股的
+  // 升降單位隨價格變(100~500 元是 0.5,500~1000 是 1,1000 元以上是 5),
+  // 原本固定 0.5 的寫法讓台達電(1600 元、檔位 5 元)的 10 個價位變成 4px
+  // 細條散在 41px 的間隔裡,看起來像資料很稀疏,其實是每一檔都有量。
+  // 取實際相鄰價位的最小間距,不查表:資料自己就說了它的檔位是多少。
+  const gaps = rows.slice(1).map((r, i) => rows[i].p - r.p).filter(v => v > 0);
+  const step = gaps.length ? Math.min(...gaps) : 0.5;
+  const bh = Math.max(1.5, (HP - TOP) * step / ((hi - lo) || 1) - 0.4);
   const vMax = Math.max(...bars.map(b => b.vol), 1);
   const vTop = HP + GAP, vBot = vTop + HV;
   const yV = v => vBot - (v / vMax) * HV;
@@ -169,10 +183,10 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
         + ` <span class="${b.out - b.in >= 0 ? 'up' : 'dn'}">(${
           fmt(b.out - b.in, 0)})</span>`
         + `<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">`
-        + (at ? `<span class="dim">元大在 ${b.c} 元:</span> `
+        + (at ? `<span class="dim">${D.broker_name}在 ${b.c} 元:</span> `
               + `買 <b class="up">${numf(at.b / 1000)}</b>`
               + ` / 賣 <b class="dn">${numf(at.s / 1000)}</b> 張`
-              : `<span class="dim">元大在 ${b.c} 元無進出</span>`), ev);
+              : `<span class="dim">${D.broker_name}在 ${b.c} 元無進出</span>`), ev);
     };
     h.onmouseleave = hide;
   });
@@ -186,11 +200,11 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
       const touched = bars.filter(b => b.l <= p && p <= b.h);
       const first = touched[0], last = touched[touched.length - 1];
       showTip(`<b>${p.toFixed(1)} 元</b>`
-        + `<br>元大 買 <b class="up">${numf(r.b / 1000)}</b>`
+        + `<br>${D.broker_name} 買 <b class="up">${numf(r.b / 1000)}</b>`
         + ` / 賣 <b class="dn">${numf(r.s / 1000)}</b> 張`
         + ` <span class="${r.b - r.s >= 0 ? 'up' : 'dn'}">(${
           fmt((r.b - r.s) / 1000, 0)})</span>`
-        + `<br><span class="dim">全市場 ${numf(m.b / 1000)} 張,元大佔 ${
+        + `<br><span class="dim">全市場 ${numf(m.b / 1000)} 張,${D.broker_name}佔 ${
           m.b ? (r.b / m.b * 100).toFixed(0) : 0}%</span>`
         + (touched.length
             ? `<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">`
@@ -202,19 +216,82 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
   });
 }
 
+let IDX = null;                     // demo/index.json
+const CACHE = {};                   // {stock_id: 該股的完整資料}
+
+const yi = v => (v / 1e8).toFixed(2);        // 元 → 億
+const wan = v => Math.round(v / 1e4);        // 元 → 萬
+
+/** 挑選列:每檔一張卡,顯示決定它入選的那三個數字。 */
+function renderPicks(on) {
+  $("#demo-picks").innerHTML = IDX.stocks.map(s => `
+    <button data-sid="${s.stock_id}" aria-pressed="${s.stock_id === on}">
+      <div class="nm">${s.stock_id} ${s.name}</div>
+      <div class="sub">相抵 ${yi(s.dt_amount)} 億 · 佔量 ${s.dt_pct}%</div>
+      <div class="sub">對稱 ${s.asym_pct}% · <span class="${cls(s.dt_pnl)}">${
+        fmt(wan(s.dt_pnl), 0)} 萬</span></div>
+    </button>`).join("");
+  $("#demo-picks").querySelectorAll("button[data-sid]").forEach(b => {
+    b.onclick = () => loadStock(b.dataset.sid);
+  });
+}
+
+/** 換檔:先讀快取,沒有才抓。抓的期間標題先換掉,不然點了像沒反應。 */
+async function loadStock(sid) {
+  renderPicks(sid);
+  if (!CACHE[sid]) {
+    $("#demo-title").textContent = `${sid} 載入中…`;
+    CACHE[sid] = await (await fetch(`demo/${sid}.json`)).json();
+  }
+  D = CACHE[sid];
+  render();
+}
+
 export async function initDemo() {
-  if (D) return;
-  D = await (await fetch("demo_data.json")).json();
-  const q = D.quote || {};
+  if (IDX) return;
+  IDX = await (await fetch("demo/index.json")).json();
+  const p = IDX.params;
+  $("#demo-head").textContent =
+    `${IDX.broker_name}（${IDX.bno}）${IDX.date}　相抵量最大的 ${
+      IDX.stocks.length} 檔`;
+  $("#demo-rule").innerHTML =
+    `<b>相抵量</b> = min(當日買股數, 賣股數)，即這個分點同日買進又賣出、`
+    + `互相抵消掉的部分。篩選條件:相抵金額 ≥ <b>${p.min_amount} 億</b>、`
+    + `相抵量佔該股日線成交量 ≥ <b>${p.min_pct}%</b>、`
+    + `對稱度 |買−賣|÷相抵量 < <b>${p.max_asym}%</b>（越小越純粹是沖，`
+    + `不是邊沖邊建倉）。<br>`
+    + `<b>為什麼不用淨額排序</b>:當沖買賣相抵，淨額趨近 0 —— `
+    + `台達電那天元大進出 1,572 張、淨額只有 +3 張，用淨額排會排到最底下。<br>`
+    + `<b>口徑但書</b>:分點資料看不出是同一個客戶一買一賣，`
+    + `相抵量也可能是兩個客戶各做一邊，<b>不等於證交所定義的當沖</b>；`
+    + `這是分點資料能逼近的極限。分母一律用日線成交量，不用分點合計`
+    + `（分點成交量系統性少於官方成交量）。`;
+  await loadStock(IDX.stocks[0].stock_id);
+}
+
+function render() {
+  const q = D.quote || {}, m = D.metrics || {};
   $("#demo-title").textContent =
-    `${D.stock_name}（${D.stock_id}）× ${D.broker_name}（${D.bno}）　${D.date}`;
+    `${D.name}（${D.stock_id}）× ${D.broker_name}（${D.bno}）　${D.date}`;
   $("#demo-kpi").innerHTML =
     `<div><div class="k">開</div><div class="v">${q.open}</div></div>
-     <div><div class="k">高</div><div class="v up">${q.max}</div></div>
-     <div><div class="k">低</div><div class="v dn">${q.min}</div></div>
-     <div><div class="k">收</div><div class="v">${q.close}</div></div>
+     <div><div class="k">高</div><div class="v up">${q.high}</div></div>
+     <div><div class="k">低</div><div class="v dn">${q.low}</div></div>
+     <div><div class="k">收</div><div class="v">${q.close} <span class="${
+       cls(q.spread)}">${fmt(q.spread, 2)}</span></div></div>
      <div><div class="k">成交量</div><div class="v">${
-       numf(q.Trading_Volume / 1000)} 張</div></div>
+       numf(q.volume / 1000)} 張</div></div>
+     <div><div class="k">相抵量</div><div class="v">${
+       numf(m.dt_sh / 1000)} 張</div></div>
+     <div><div class="k">相抵金額</div><div class="v">${
+       yi(m.dt_amount)} 億</div></div>
+     <div><div class="k">佔日線量</div><div class="v">${m.dt_pct}%</div></div>
+     <div><div class="k">淨額</div><div class="v ${cls(m.net_sh)}">${
+       fmt(m.net_sh / 1000, 0)} 張</div></div>
+     <div><div class="k">相抵損益</div><div class="v ${cls(m.dt_pnl)}">${
+       fmt(wan(m.dt_pnl), 0)} 萬</div></div>
+     <div><div class="k">買/賣均價</div><div class="v">${
+       (m.buy_vwap || 0).toFixed(2)} / ${(m.sell_vwap || 0).toFixed(2)}</div></div>
      <div><div class="k">逐筆成交</div><div class="v">${
        numf(D.ticks.length)} 筆</div></div>`;
 
@@ -223,7 +300,7 @@ export async function initDemo() {
     const bars = bucketize(D.ticks, sec);
     // 價格軸範圍取「走勢 + 該分點有進出的價位」的聯集,兩張圖才能真的對齊
     const ps = D.broker_price.map(r => r.p);
-    const lo = Math.min(q.min, ...ps), hi = Math.max(q.max, ...ps);
+    const lo = Math.min(q.low, ...ps), hi = Math.max(q.high, ...ps);
     // 當日累計 VWAP(逐桶推進),不是各桶自己的均價
     let cv = 0, ca = 0;
     const avg = bars.map(b => { cv += b.vol; ca += b.c * b.vol; return ca / cv; });
@@ -240,23 +317,26 @@ export async function initDemo() {
   $("#demo-table").innerHTML =
     `<table><tr><th>價位</th><th class="num">買(張)</th><th class="num">賣(張)</th>`
     + `<th class="num">淨(張)</th><th class="num">全市場買(張)</th>`
-    + `<th class="num">元大佔比</th></tr>`
+    + `<th class="num">${D.broker_name}佔比</th></tr>`
+    // 內層變數不叫 m —— 外面的 m 是 D.metrics,同名會被遮住
     + tb.map(r => {
-        const m = D.market_price.find(x => x.p === r.p) || {b: 0};
-        const n = (r.b - r.s) / 1000;
+        const mk = D.market_price.find(x => x.p === r.p) || {b: 0};
+        // `|| 0` 是為了把 -0 變成 0:零股列(例如只賣 118 股)四捨五入後是
+        // -0,fmt 會印出「-0」看起來像錯誤。-0 是 falsy,所以這樣就夠。
+        const n = Math.round((r.b - r.s) / 1000) || 0;
         return `<tr><td>${r.p.toFixed(1)}</td>`
           + `<td class="num up">${numf(r.b / 1000)}</td>`
           + `<td class="num dn">${numf(r.s / 1000)}</td>`
           + `<td class="num ${cls(n)}">${fmt(n, 0)}</td>`
-          + `<td class="num dim">${numf(m.b / 1000)}</td>`
-          + `<td class="num dim">${m.b ? (r.b / m.b * 100).toFixed(0) + "%" : "—"}</td></tr>`;
+          + `<td class="num dim">${numf(mk.b / 1000)}</td>`
+          + `<td class="num dim">${mk.b ? (r.b / mk.b * 100).toFixed(0) + "%" : "—"}</td></tr>`;
       }).join("")
     + `<tr><td><b>合計</b></td><td class="num up"><b>${numf(sum("b") / 1000)}</b></td>`
     + `<td class="num dn"><b>${numf(sum("s") / 1000)}</b></td>`
     + `<td class="num ${cls(sum("b") - sum("s"))}"><b>${
         fmt((sum("b") - sum("s")) / 1000, 0)}</b></td>`
-    + `<td class="num dim">${numf(q.Trading_Volume / 1000)}</td>`
-    + `<td class="num dim">${(sum("b") / q.Trading_Volume * 100).toFixed(1)}%</td></tr>`
+    + `<td class="num dim">${numf(q.volume / 1000)}</td>`
+    + `<td class="num dim">${(sum("b") / q.volume * 100).toFixed(1)}%</td></tr>`
     // 分點與日線同為「股」,故佔比直接相除;不要拿 tick 的張數當分母
     + `</table>`;
 }

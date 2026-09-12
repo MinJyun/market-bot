@@ -10,6 +10,7 @@
 """
 import argparse
 import json
+import re
 import sqlite3
 import time
 from datetime import datetime
@@ -37,11 +38,16 @@ STATIC = {
     "charts.js": "text/javascript; charset=utf-8",
     "tables.js": "text/javascript; charset=utf-8",
     "demo.js": "text/javascript; charset=utf-8",
-    # demo 分頁的一次性示範資料(信昌電 2026-09-11 逐筆 + 元大逐價位)。
-    # 落成靜態檔而非端點:逐價位那層現在的 DB 沒有(aggregate 時壓掉了),
-    # 每次開頁面都去打 FinMind 既慢又浪費額度。
-    "demo_data.json": "application/json; charset=utf-8",
 }
+
+# demo 分頁的示範資料(demo_build.py 產生,在 web/demo/)。落成靜態檔而非端點:
+# 逐價位那層現在的 DB 沒有(finmind_backfill.aggregate 時壓掉了),每次開頁面
+# 都去打 FinMind 既慢又浪費額度。
+#
+# 檔名逐字元驗證而非「demo/ 底下任意檔案」:白名單的用意就是不讓路徑由請求
+# 決定,開一個目錄再放行等於把那個保護拆掉一半。只收 index 或 4~6 碼股票代號。
+DEMO_DIR = HERE / "demo"
+DEMO_RE = re.compile(r"^(index|[0-9]{4,6}[A-Z]?)\.json$")
 
 # 重點分點:UI 預設排在前面。與 finmind_backfill.KEEP_BROKERS 同一份名單,
 # 這裡重複一份以免 web 依賴回補腳本(兩者生命週期不同)。
@@ -871,6 +877,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             return self.wfile.write(body)
+        if name.startswith("demo/"):
+            leaf = name[len("demo/"):]
+            if not DEMO_RE.match(leaf):
+                return self._send(404, b'{"error":"not found"}',
+                                  "application/json")
+            f = DEMO_DIR / leaf
+            if not f.exists():
+                return self._send(404, b'{"error":"no demo data"}',
+                                  "application/json")
+            return self._send(200, f.read_bytes(),
+                              "application/json; charset=utf-8")
         fn = ROUTES.get(u.path)
         if not fn:
             return self._send(404, b'{"error":"not found"}', "application/json")

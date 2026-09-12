@@ -65,3 +65,13 @@ tr.pick:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
   color:var(--dim);margin-bottom:6px}
 #demo-table table{font-size:12px}
 #demo-table td,#demo-table th{padding:3px 6px}
+/* 個股挑選列:10 張卡橫排,點了換下面的圖 */
+.picks{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 8px}
+.picks button{background:var(--card);border:1px solid var(--line);
+  border-radius:6px;padding:6px 10px;cursor:pointer;color:inherit;
+  font:inherit;text-align:left;line-height:1.45}
+.picks button:hover{border-color:var(--accent)}
+.picks button[aria-pressed="true"]{border-color:var(--accent);
+  background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.picks .nm{font-size:13px;font-weight:600}
+.picks .sub{font-size:11px;color:var(--dim)}

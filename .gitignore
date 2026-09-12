@@ -17,3 +17,5 @@ data/market.db*
 web/demo_data.json
 # session 間的交接筆記,不是專案產出。
 HANDOFF.md
+# demo 分頁的靜態資料目錄(demo_build.py 產生),同上:FinMind 授權資料。
+web/demo/

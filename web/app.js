@@ -13,6 +13,7 @@ import {tableBars, tablePnl, tableConsensus, tableInst, tableLt,
 import {initDemo} from "./demo.js";
 
 let META = null;
+let TAB_CLICK = null;    // init() 裡綁好,供 ?tab= 深層連結沿用同一條路
 
 /* ---------- 依分點 ---------- */
 let B_CACHE = null;      // 快取整段 daily,改日期只在前端切片,不重打 API
@@ -646,6 +647,7 @@ async function init() {
   $("#tab-m").onclick = async ()=>{ showTab("m");
     if (!M_DATA) await loadIndex(); };
   $("#tab-d").onclick = async ()=>{ showTab("d"); await initDemo(); };
+  TAB_CLICK = which => $("#tab-" + which).onclick();
   document.querySelectorAll("#m-days button[data-mq]").forEach(b=>{
     b.onclick = () => { M_DAYS = +b.dataset.mq;
       markQuick("#m-days", M_DAYS); loadIndex(); };
@@ -666,5 +668,9 @@ init().then(() => {
   // 深層連結:?bno=1440&sid=2330 直接開啟該組合的 K 線與進出,方便分享
   const q = new URLSearchParams(location.search);
   const bno = q.get("bno"), sid = q.get("sid");
-  if (bno && sid) showPair(bno, sid);
+  if (bno && sid) return showPair(bno, sid);
+  // ?tab=d 直接開某個分頁。走與點擊同一條路(含各頁的 init),不是只切顯示,
+  // 否則分頁會是空的。
+  const t = q.get("tab");
+  if (t && ["b","s","e","m","d"].includes(t)) return TAB_CLICK(t);
 }).catch(e=>{ $("#meta").textContent="錯誤:"+e.message; });
