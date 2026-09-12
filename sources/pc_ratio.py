@@ -6,9 +6,11 @@
 頁面 https://www.taifex.com.tw/cht/3/pcRatio 預設(免帶查詢參數)即回傳約一個
 月的交易日歷史表,故 fetch 每次執行就順帶回補近況,不需另外實作 backfill。
 TWSE/TAIFEX 頁面有 bot 防護,用 curl_cffi(impersonate chrome)。
-對外契約:NAME / fetch(conn) / build_message(conn)。
+對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
 """
 import re
+import time
+from datetime import date, timedelta
 
 from core import store, taifex
 
@@ -67,6 +69,34 @@ def fetch(conn):
     except Exception as e:
         print(f"[fetch] pc_ratio: 失敗 — {e}")
         return ["pc_ratio"]
+
+
+def backfill(conn, days):
+    """回補 P/C ratio。該頁支援 queryStartDate/queryEndDate 區間查詢,
+    一次可取一整段,故依 30 天為一批往前走(不必逐日打)。"""
+    end = date.today()
+    first = date.today() - timedelta(days=days)
+    while end >= first:
+        start = max(first, end - timedelta(days=29))
+        try:
+            html = taifex.get(URL, data={"queryStartDate": f"{start:%Y/%m/%d}",
+                                         "queryEndDate": f"{end:%Y/%m/%d}"})
+            rows = ROW_RE.findall(html)
+            now = store.now()
+            with conn:
+                for d, pv, cv, vr, po, co, oir in rows:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO pc_ratio VALUES (?,?,?,?,?,?,?,?)",
+                        (_to_iso(d), float(pv.replace(",", "")),
+                         float(cv.replace(",", "")), float(vr),
+                         float(po.replace(",", "")), float(co.replace(",", "")),
+                         float(oir), now))
+            print(f"[backfill] pc_ratio {start}~{end}:{len(rows)} 個交易日")
+        except Exception as e:
+            print(f"[backfill] pc_ratio {start}~{end}: 失敗 — {e}")
+        end = start - timedelta(days=1)
+        # 期交所對單一路徑有 Cloudflare 限流,間隔 >=2s(見 taifex-rate-limit)
+        time.sleep(2)
 
 
 def build_message(conn):

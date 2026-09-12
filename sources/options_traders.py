@@ -9,12 +9,17 @@
      買方、賣方部位。Call/Put 方向意義相反(買 Call 偏多、買 Put 偏空/避險),
      故不併成單一淨部位,分別呈現大戶在兩邊的買賣口數。
 
-資料皆來自期交所,curl_cffi 破 bot 防護。不做 backfill(見下),歷史每日累積。
-對外契約:NAME / fetch(conn) / build_message(conn)。
+資料皆來自期交所,curl_cffi 破 bot 防護。
+對外契約:NAME / fetch(conn) / backfill(conn, days) / build_message(conn)。
 
-不做 backfill:大額交易人僅當日預設頁提供帶語意 headers、可穩定解析的表格,
-指定歷史日期會回另一種凌亂版面;故歷史從今天起每日往前累積。
+backfill 只涵蓋三大法人(未平倉與買賣權分計):optContractsDateExcel 與
+callsAndPutsDateExcel 帶 queryDate 可查歷史,實測 2026-06-10 解析正常。
+**大額交易人(十大交易人)不可回補** —— largeTraderOptQry 帶 queryDate 會把
+頁面日期換掉但內容是「查無資料」,期交所該表只給最新一日;歷史只能每日累積。
 """
+import time
+from datetime import date, timedelta
+
 from core import store, taifex
 
 NAME = "options_traders"
@@ -141,6 +146,67 @@ def fetch(conn):
         fails.append("options_inst_cp")
         print(f"[fetch] options_traders 買賣權分計: 失敗 — {e}")
     return ["options_traders"] if len(fails) == 3 else []
+
+
+def backfill(conn, days):
+    """回補選擇權三大法人未平倉與買賣權分計(POST queryDate 可查歷史)。
+
+    **大額交易人(十大交易人)不可回補**:largeTraderOptQry 帶 queryDate 雖然
+    會把頁面日期換掉,內容卻是「查無資料」—— 期交所該表只提供最新一日
+    (futures_traders 的同一頁也是如此)。
+    """
+    q = {"queryType": "1", "goDay": "", "doQuery": "1", "dateaddcnt": "",
+         "commodityId": ""}
+    for i in range(1, days + 1):
+        d = date.today() - timedelta(days=i)
+        if d.weekday() >= 5:
+            continue
+        qd = dict(q, queryDate=f"{d:%Y/%m/%d}")
+        try:
+            html = taifex.get(INST_URL, data=qd)
+            dd = taifex.inst_date(html)
+            if dd != d.isoformat():      # 假日查詢會回別天,跳過免得蓋錯日期
+                continue
+            inst = taifex.parse_inst(html).get(INST_CONTRACT) or {}
+            tr = taifex.parse_inst(html, 4).get(INST_CONTRACT) or {}
+            if inst:
+                with conn:
+                    conn.execute(
+                        "INSERT OR REPLACE INTO options_inst "
+                        "(contract,data_date,foreign_net,trust_net,dealer_net,"
+                        "foreign_trade,trust_trade,dealer_trade,fetched_at) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (INST_CONTRACT, dd, inst.get("外資", 0),
+                         inst.get("投信", 0), inst.get("自營商", 0),
+                         tr.get("外資", 0), tr.get("投信", 0),
+                         tr.get("自營商", 0), store.now()))
+        except Exception as e:
+            print(f"[backfill] options_traders 三大法人 {d}: 失敗 — {e}")
+        time.sleep(2)      # 期交所路徑級限流,見 taifex-rate-limit
+        try:
+            html = taifex.get(CP_URL, data=qd)
+            dd = taifex.inst_date(html)
+            if dd != d.isoformat():
+                continue
+            cp = taifex.parse_inst_cp(html).get(INST_CONTRACT) or {}
+            cpt = taifex.parse_inst_cp(html, 4).get(INST_CONTRACT) or {}
+            now = store.now()
+            with conn:
+                for side, who in cp.items():
+                    t = cpt.get(side, {})
+                    conn.execute(
+                        "INSERT OR REPLACE INTO options_inst_cp "
+                        "(cp,data_date,foreign_net,trust_net,dealer_net,"
+                        "foreign_trade,trust_trade,dealer_trade,fetched_at) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
+                        (side, dd, who.get("外資", 0), who.get("投信", 0),
+                         who.get("自營商", 0), t.get("外資", 0),
+                         t.get("投信", 0), t.get("自營商", 0), now))
+            if cp:
+                print(f"[backfill] options_traders {dd}:未平倉+買賣權分計")
+        except Exception as e:
+            print(f"[backfill] options_traders 買賣權分計 {d}: 失敗 — {e}")
+        time.sleep(2)
 
 
 # ================================================================ LINE 訊息

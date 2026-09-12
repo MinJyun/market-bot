@@ -190,11 +190,28 @@ def fetch(conn):
     return ["futures_traders"] if len(fails) == 3 else []
 
 
-def backfill(conn, days):
-    """回補三大法人淨部位(POST 可查歷史)與台指期結算價;大額交易人不可回補。"""
+def backfill(conn, days, pace=3.0, max_blocked=6):
+    """回補三大法人淨部位(POST 可查歷史)與台指期結算價;大額交易人不可回補。
+
+    **被限流時要中止,不能當成假日跳過**:期交所擋人時回的是一頁沒有日期的
+    短頁面(約 3.5 KB,正常頁 215 KB),`inst_date()` 回 None。原本的寫法
+    `if dd != d.isoformat(): continue` 會把它當「假日」靜默跳過 ——
+    2026-09-05 的 365 天回補就是這樣:抓到 2026-02-23 被擋,接著無聲跳過
+    剩下 127 天,**一個失敗都沒印**,看起來像正常跑完。
+    (同一輪的 options_traders 沒事,因為期交所的限流是路徑級的。)
+    """
+    # 已有的日期不重抓。期交所對此路徑有**請求配額**(實測約 134 次就被擋,
+    # 間隔 2s 與 3s 皆然,所以不是速率而是次數),若照樣從今天往回重走,配額
+    # 會全部花在已經有的資料上,永遠走不到缺的那段 —— 2026-09-05 連續兩次
+    # 回補都卡在同一天(2026-02-23)就是這個原因,不是期交所不給舊資料
+    # (直接查 2025-12-15 是拿得到的)。
+    have = {r[0] for r in conn.execute(
+        "SELECT data_date FROM futures_inst GROUP BY data_date"
+        " HAVING COUNT(DISTINCT contract) >= ?", (len(CONTRACTS),))}
+    blocked = 0
     for i in range(1, days + 1):
         d = date.today() - timedelta(days=i)
-        if d.weekday() >= 5:
+        if d.weekday() >= 5 or d.isoformat() in have:
             continue
         try:
             html = taifex.get(INST_URL, data={
@@ -202,24 +219,48 @@ def backfill(conn, days):
                 "dateaddcnt": "", "queryDate": f"{d:%Y/%m/%d}",
                 "commodityId": ""})
             dd = taifex.inst_date(html)
+            if dd is None:               # 頁面沒有日期 = 被擋,不是假日
+                blocked += 1
+                if blocked >= max_blocked:
+                    print(f"[backfill] futures_traders: 連續 {blocked} 頁無日期,"
+                          f"中止(多半被限流,冷卻後重跑)")
+                    return
+                time.sleep(pace)
+                continue
+            blocked = 0
             if dd != d.isoformat():      # 假日查詢會回別天,跳過避免蓋錯日期
+                time.sleep(pace)
                 continue
             inst = {n: w for n, w in taifex.parse_inst(html).items()
                     if n in CONTRACTS}
+            # 全日交易淨額:與 fetch() 一致,回補也要帶(拆日盤=全日−夜盤要用)
+            trade = {n: w for n, w in taifex.parse_inst(html, 4).items()
+                     if n in CONTRACTS}
             if not inst:
                 continue
             now = store.now()
             with conn:
                 for name, who in inst.items():
+                    tr = trade.get(name, {})
+                    # 具名欄位。原本是 `VALUES (?,?,?,?,?,?)`,而 futures_inst
+                    # 後來 ALTER 加了 *_trade 三欄變成 9 欄 —— 這行從那時起
+                    # 就一直丟 "table has 9 columns but 6 values were supplied",
+                    # 整個回補等於沒作用(fetch() 早就改具名了,backfill 沒跟上)。
                     conn.execute(
-                        "INSERT OR REPLACE INTO futures_inst VALUES (?,?,?,?,?,?)",
+                        "INSERT OR REPLACE INTO futures_inst "
+                        "(contract,data_date,foreign_net,trust_net,dealer_net,"
+                        "foreign_trade,trust_trade,dealer_trade,fetched_at) "
+                        "VALUES (?,?,?,?,?,?,?,?,?)",
                         (CONTRACTS[name], dd, who.get("外資", 0),
-                         who.get("投信", 0), who.get("自營商", 0), now))
+                         who.get("投信", 0), who.get("自營商", 0),
+                         tr.get("外資", 0), tr.get("投信", 0),
+                         tr.get("自營商", 0), now))
             print(f"[backfill] futures_traders 三大法人 {dd}")
         except Exception as e:
             print(f"[backfill] futures_traders {d}: 失敗 — {e}")
-        # 0.4s 曾觸發 Cloudflare 對此路徑的 IP 限流(擋數小時),放慢
-        time.sleep(2)
+        # 0.4s 曾觸發 Cloudflare 對此路徑的 IP 限流(擋數小時)。2s 跑 365 天
+        # 仍在第 134 天被擋,故預設放寬到 3s。
+        time.sleep(pace)
     # 結算價:futDataDown 一次最多約 30 日,分段抓
     end = date.today()
     while (date.today() - end).days < days:

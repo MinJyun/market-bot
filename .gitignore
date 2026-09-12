@@ -12,3 +12,8 @@ data/broker.db*
 # core/dashboard.py 的 `git push`(60 秒)超時,五組推圖全退回文字。
 # 資料可重抓,改為不進版控(與 broker.db 一致)。
 data/market.db*
+# demo 分頁的靜態資料:含 FinMind 授權的逐筆成交與分點逐價位。
+# 本 repo 是 public,commit 進來等於公開散布授權資料(同 broker.db 的理由)。
+web/demo_data.json
+# session 間的交接筆記,不是專案產出。
+HANDOFF.md
