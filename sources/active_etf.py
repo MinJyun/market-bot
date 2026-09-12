@@ -10,6 +10,7 @@
 各投信皆為現金申購/買回:申贖進出現金、不直接改變持股,所以股數差就是
 經理人實際買賣,不做規模校正;流通單位數變化列在開頭供判讀。
 """
+import json
 import re
 import sys
 import time
@@ -254,6 +255,31 @@ _CAP_H = {"Accept": "application/json", "Content-Type": "application/json",
           "Origin": _CAPITAL}
 
 
+def parse_capital(etf, content, label=""):
+    """解析群益 buyback 回應。獨立成函式讓 raw 檔可重放(修日期時用到)。"""
+    d = json.loads(content).get("data") or {}
+    pcf, stocks = d.get("pcf") or {}, d.get("stocks") or []
+    if not stocks:
+        raise LookupError(f"capital {etf} {label} 無持股明細")
+    total_assets = pcf["nav"]  # 群益 pcf.nav 是基金淨資產(元),pUnit 才是每單位淨值
+    holdings = [{
+        "code": str(s["stocNo"]).strip(), "name": s["stocName"].strip(),
+        "shares": s["share"],
+        # 群益不給個股市值,用 淨資產×權重 估算(供排序用)
+        "amount": round(total_assets * s["weight"] / 100),
+        "weight": s["weight"],
+    } for s in stocks]
+    return {
+        # date1 是公告日、date2 才是持股所屬的交易日 —— 原本存 date1,整個
+        # 群益的資料日就晚一個交易日(2026-09-03 拿 FinMind 對帳發現:我方
+        # D 的 57 檔股數與權重,與 FinMind D-1 完全相同)。
+        "etf": etf, "data_date": pcf["date2"],
+        "nav": pcf["pUnit"], "units": pcf["totUnit"],
+        "total_assets": total_assets, "holdings": holdings,
+        "raw": content, "raw_ext": "json",
+    }
+
+
 def _fetch_capital(etf, target=None):
     from curl_cffi import requests as cr  # 延後匯入:僅群益需要此依賴
     cap_id = FUNDS[etf]["cap_id"]
@@ -267,28 +293,12 @@ def _fetch_capital(etf, target=None):
                          if str(x.get("fundId")) == str(cap_id)), None)
         if not date_str:
             raise LookupError(f"capital {etf} 取不到最新日期")
+    # 查詢參數用的是公告日(date1),不是資料日 —— 兩者別混
     r = cr.post(f"{_CAPITAL}/CFWeb/api/etf/buyback",
                 json={"fundId": cap_id, "date": date_str},
                 headers=_CAP_H, impersonate="chrome", timeout=30)
     r.raise_for_status()
-    d = r.json().get("data") or {}
-    pcf, stocks = d.get("pcf") or {}, d.get("stocks") or []
-    if not stocks:
-        raise LookupError(f"capital {etf} {date_str} 無持股明細")
-    total_assets = pcf["nav"]  # 群益 pcf.nav 是基金淨資產(元),pUnit 才是每單位淨值
-    holdings = [{
-        "code": str(s["stocNo"]).strip(), "name": s["stocName"].strip(),
-        "shares": s["share"],
-        # 群益不給個股市值,用 淨資產×權重 估算(供排序用)
-        "amount": round(total_assets * s["weight"] / 100),
-        "weight": s["weight"],
-    } for s in stocks]
-    return {
-        "etf": etf, "data_date": pcf["date1"],
-        "nav": pcf["pUnit"], "units": pcf["totUnit"],
-        "total_assets": total_assets, "holdings": holdings,
-        "raw": r.content, "raw_ext": "json",
-    }
+    return parse_capital(etf, r.content, date_str)
 
 
 _FETCHERS = {"uni": _fetch_uni, "fuhhwa": _fetch_fuhhwa,
