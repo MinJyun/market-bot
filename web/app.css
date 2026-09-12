@@ -1,0 +1,67 @@
+:root{
+  --bg:#f6f7f9; --card:#fff; --ink:#1a1d23; --dim:#6b7280; --line:#e4e7ec;
+  --up:#d0342c; --dn:#1a8a4a; --hd:#1e3a5f; --accent:#2563eb;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#14161a; --card:#1c1f26; --ink:#e6e8ec; --dim:#9aa3b2; --line:#2c313b;
+  --up:#ff6b60; --dn:#3ecf7f; --hd:#243b55;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 -apple-system,"Helvetica Neue","PingFang TC","Noto Sans TC",sans-serif}
+header{background:var(--hd);color:#fff;padding:14px 20px;display:flex;
+  align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{margin:0;font-size:17px;font-weight:700}
+header .meta{font-size:12px;opacity:.8}
+.wrap{max-width:1200px;margin:0 auto;padding:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:14px 16px;margin-bottom:16px}
+.card h2{margin:0 0 12px;font-size:15px;font-weight:700}
+.ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+select,input,button{font:inherit;padding:6px 9px;border:1px solid var(--line);
+  border-radius:6px;background:var(--card);color:var(--ink)}
+button{cursor:pointer}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.quick{display:flex;gap:4px}
+.quick button{padding:6px 10px;font-size:12px}
+.quick button:hover{border-color:var(--accent);color:var(--accent)}
+.tabs{display:flex;gap:6px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--dim);font-weight:600;font-size:12px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .dn{color:var(--dn)} .dim{color:var(--dim)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pies{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:12px 0}
+.pies>div{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start}
+.pies svg{width:150px;height:auto}
+@media (max-width:900px){.pies{grid-template-columns:1fr}}
+.grid2 table{font-size:12px}
+.grid2 th,.grid2 td{padding:5px 5px}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.scroll{overflow-x:auto}
+svg{display:block;width:100%;height:auto}
+.tip{font-size:12px;color:var(--dim);margin-top:6px}
+footer{text-align:center;color:var(--dim);font-size:12px;padding:8px 0 24px}
+.bar{height:14px;border-radius:3px}
+.spin{color:var(--dim);padding:20px;text-align:center}
+.stale{opacity:.45;transition:opacity .15s}
+.kpi{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:8px;font-size:13px}
+.kpi div{min-width:104px}
+.kpi .k{color:var(--dim);font-size:11px}
+.kpi .v{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}
+#tip{position:fixed;pointer-events:none;z-index:99;display:none;
+  background:var(--card);border:1px solid var(--line);border-radius:6px;
+  padding:6px 9px;font-size:12px;line-height:1.5;
+  box-shadow:0 4px 14px rgba(0,0,0,.18);white-space:nowrap}
+#tip b{font-weight:700}
+tr.pick{cursor:pointer}
+tr.pick:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+
+/* demo:逐價位 + 走勢畫在同一張 SVG(拆兩張會因長寬比不同而對不齊價格軸) */
+#demo-chart svg{width:100%;height:auto}
+.demo-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;
+  color:var(--dim);margin-bottom:6px}
+#demo-table table{font-size:12px}
+#demo-table td,#demo-table th{padding:3px 6px}
