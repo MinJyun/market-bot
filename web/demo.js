@@ -251,7 +251,8 @@ function renderPicks(on) {
       <div class="nm">${s.stock_id} ${s.name} <span class="${cls(s.chg_pct)}">${
         fmt(s.chg_pct, 2)}%</span></div>
       <div class="sub">相抵 ${yi(s.dt_amount)} 億 · 佔量 ${s.dt_pct}%</div>
-      <div class="sub">振幅 ${s.range_pct}% · 對稱 ${s.asym_pct}%</div>
+      <div class="sub">成交額 ${yi(s.amount)} 億 · 振幅 ${s.range_pct}%`
+    + ` · 對稱 ${s.asym_pct}%</div>
       <div class="sub"><span class="${cls(s.dt_pnl)}">${
         fmt(wan(s.dt_pnl), 0)} 萬（${fmt(s.dt_roi, 2)}%）</span></div>
     </button>`).join("");
@@ -280,10 +281,14 @@ export async function initDemo() {
       IDX.stocks.length} 檔`;
   $("#demo-rule").innerHTML =
     `<b>相抵量</b> = min(當日買股數, 賣股數)，即這個分點同日買進又賣出、`
-    + `互相抵消掉的部分。篩選條件:相抵金額 ≥ <b>${p.min_amount} 億</b>、`
-    + `相抵量佔該股日線成交量 ≥ <b>${p.min_pct}%</b>、`
+    + `互相抵消掉的部分。篩選條件:該股日線成交額 ≥ <b>${p.min_turnover} 億</b>`
+    + `（規模）、相抵量佔該股日線成交量 ≥ <b>${p.min_pct}%</b>（強度）、`
     + `對稱度 |買−賣|÷相抵量 < <b>${p.max_asym}%</b>（越小越純粹是沖，`
     + `不是邊沖邊建倉）、振幅 ≥ <b>${p.min_range}%</b>。<br>`
+    + `<b>規模為什麼看日線成交額而不是相抵金額</b>:相抵金額會讓門檻變成`
+    + `「歧視低價股」—— 台塑化相抵 3,544 張只值 3.06 億，同樣張數的信昌電`
+    + `（290 元）就是 10 億；但台塑化當天成交 54,972 張、成交額 46 億，`
+    + `完全不是小型股。規模看成交額、強度看相抵佔量，各管各的。<br>`
     + `<b>為什麼要卡振幅</b>:把「相抵損益 ÷ 相抵金額」當這筆當沖的報酬率，`
     + `它與振幅明顯同向 —— 台達電振幅 2.39%，進出 25.31 億只吃到 <b>0.05%</b>；`
     + `信昌電振幅 13.56%，16.86 億吃到 <b>1.16%</b>，差 20 倍。`

@@ -3,25 +3,33 @@
 
 為什麼是「當沖」而不是「買超/淨額」:這個分點有大戶在打大量當沖單,買賣幾乎
 相抵,用淨額排序反而會把他排到最底下(2026-09-11 台達電:元大進出 1,572 張,
-淨額只有 +3 張)。所以篩選用三個條件:
+淨額只有 +3 張)。所以篩選用四個條件:
 
-    當沖量 dt   = min(買股數, 賣股數)      同日買賣相抵的部分
-    當沖金額    = dt × (買均價+賣均價)/2   → 濾掉小型股的雜訊(使用者要的成交額條件)
-    當沖佔量    = dt ÷ 日線成交量          → 這個分點在該股當沖裡的份量
+    相抵量 dt   = min(買股數, 賣股數)      同日買賣相抵的部分
+    日線成交額  = 該股當日成交金額          → 規模門檻:濾掉小型股
+    相抵佔量    = dt ÷ 日線成交量          → 強度門檻:這個分點的份量夠不夠
     對稱度      = |買−賣| ÷ dt             → 越小越純粹是沖,不是邊沖邊建倉
     振幅        = (最高−最低) ÷ 昨收        → 沒有振幅就沒有利潤空間
+
+**規模門檻用「日線成交額」而不是「相抵金額」**:相抵金額同時兼了兩個職責 ——
+它想擋小型股,實際擋的卻是低價股。台塑化(6505)2026-09-11 相抵 3,544 張只值
+3.06 億,同樣張數的信昌電(290 元)就是 10 億;但台塑化當天成交 54,972 張、
+日線成交額 46 億,完全不是小型股。規模與強度拆開之後,規模看日線成交額
+(不受股價高低影響)、強度看相抵佔量,各管各的。
+(附帶一提台塑化在方案 C 下仍不入選,因為元大在它身上只佔 6.45% —— 那是
+強度不足,不是規模問題,屬於本來就該篩掉的。)
 
 **振幅門檻的理由(實測 2026-09-11 元大,不是猜的)**:把「相抵損益 ÷ 相抵金額」
 當成這筆當沖的報酬率,它與振幅明顯同向 ——
 
-    3624 光頡  振幅 15.42%   8.68 億 → −731 萬   0.84%
-    6173 信昌電 振幅 13.56%  16.86 億 → +1,962 萬 1.16%
-    3026 禾伸堂 振幅  8.22%   9.90 億 → +1,041 萬 1.05%
-    2303 聯電  振幅  2.81%  14.68 億 → −414 萬   0.28%
-    2308 台達電 振幅  2.39%  25.31 億 → −116 萬   0.05%
-    2357 華碩  振幅  1.82%   6.41 億 → −24 萬    0.04%
+    3624 光頡  振幅 15.42%   8.68 億 → −731 萬   −0.84%
+    6173 信昌電 振幅 13.56%  16.86 億 → +1,962 萬 +1.16%
+    3026 禾伸堂 振幅  8.22%   9.90 億 → +1,041 萬 +1.05%
+    2303 聯電  振幅  2.81%  14.68 億 → −414 萬   −0.28%
+    2308 台達電 振幅  2.39%  25.31 億 → −116 萬   −0.05%
+    2357 華碩  振幅  1.82%   6.41 億 → −24 萬    −0.04%
 
-台達電進出 25 億只吃到 0.05%,信昌電 16.86 億吃到 1.16%,差 20 倍。相抵量最大
+台達電進出 25 億只賺賠 0.05%,信昌電 16.86 億吃到 1.16%,絕對值差 20 倍。相抵量最大
 的那檔不見得是有戲的那檔,所以振幅要當門檻而不只是欄位。
 
 昨收用 `close − spread` 算(price 表的 spread 是當日漲跌點數),不另外查前一
@@ -41,7 +49,7 @@ UI 上要照這個講法標示,不要寫成「當沖」二字了事。
 
 用法:
     python3 demo_build.py                       # 預設 9800 × 最新交易日
-    python3 demo_build.py --date 2026-09-11 --bno 9800 --limit 10
+    python3 demo_build.py --date 2026-09-11 --bno 9800 --limit 20
 """
 import argparse
 import json
@@ -123,7 +131,7 @@ def stock_names():
     return out
 
 
-def screen(conn, date8, bno, min_amt, min_pct, max_asym, min_range, limit):
+def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit):
     """挑出該分點當日「相抵量」最可觀的幾檔。回傳 dict 清單。"""
     rows = conn.execute("""
         SELECT b.stock_id,
@@ -146,7 +154,7 @@ def screen(conn, date8, bno, min_amt, min_pct, max_asym, min_range, limit):
         asym = abs(buy - sell) * 100.0 / dt_sh
         prev = cl - sp                      # 昨收 = 今收 − 當日漲跌點數
         rng = (hi - lo) * 100.0 / prev if prev else 0
-        if (dt_amt < min_amt or dt_pct < min_pct or asym >= max_asym
+        if (amt < min_turnover or dt_pct < min_pct or asym >= max_asym
                 or rng < min_range):
             continue
         dt_pnl = round((sv - bv) * dt_sh) if bv and sv else 0
@@ -217,12 +225,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="交易日 YYYY-MM-DD(預設 DB 最新有資料日)")
     ap.add_argument("--bno", default="9800", help="分點代號")
-    ap.add_argument("--limit", type=int, default=10, help="最多取幾檔")
-    ap.add_argument("--min-amount", type=float, default=5.0,
-                    help="相抵金額門檻(億元)")
+    ap.add_argument("--limit", type=int, default=20, help="最多取幾檔")
+    ap.add_argument("--min-turnover", type=float, default=20.0,
+                    help="該股日線成交額門檻(億元);規模門檻,不受股價高低影響")
     ap.add_argument("--min-pct", type=float, default=8.0,
-                    help="相抵量佔日線成交量的門檻(%%)")
-    ap.add_argument("--max-asym", type=float, default=20.0,
+                    help="相抵量佔日線成交量的門檻(%%);強度門檻")
+    ap.add_argument("--max-asym", type=float, default=25.0,
                     help="對稱度上限(%%);越小越純粹是沖")
     ap.add_argument("--min-range", type=float, default=3.0,
                     help="振幅下限(%%);沒有振幅就沒有利潤空間")
@@ -234,7 +242,7 @@ def main():
                           " WHERE rows > 0").fetchone()[0])
     date = f"{str(date8)[:4]}-{str(date8)[4:6]}-{str(date8)[6:]}"
 
-    picks = screen(conn, int(date8), args.bno, args.min_amount * 1e8,
+    picks = screen(conn, int(date8), args.bno, args.min_turnover * 1e8,
                    args.min_pct, args.max_asym, args.min_range, args.limit)
     if not picks:
         sys.exit(f"{date} 分點 {args.bno} 沒有符合條件的個股,放寬門檻再試")
@@ -245,7 +253,7 @@ def main():
     bname = broker.get(args.bno, args.bno)
 
     print(f"{date} 分點 {args.bno}({bname}):符合條件 {len(picks)} 檔"
-          f"(相抵金額≥{args.min_amount}億、佔量≥{args.min_pct}%、"
+          f"(日線成交額≥{args.min_turnover}億、相抵佔量≥{args.min_pct}%、"
           f"對稱度<{args.max_asym}%、振幅≥{args.min_range}%)")
     OUT.mkdir(parents=True, exist_ok=True)
     token = get_token()
@@ -292,7 +300,7 @@ def main():
 
     (OUT / "index.json").write_text(json.dumps({
         "date": date, "bno": args.bno, "broker_name": bname,
-        "params": {"min_amount": args.min_amount, "min_pct": args.min_pct,
+        "params": {"min_turnover": args.min_turnover, "min_pct": args.min_pct,
                    "max_asym": args.max_asym, "min_range": args.min_range},
         "stocks": index,
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
