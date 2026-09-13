@@ -167,7 +167,10 @@ def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit):
         out.append({
             "stock_id": sid,
             "dt_sh": dt_sh, "dt_amount": round(dt_amt),
-            "dt_pct": round(dt_pct, 2), "asym_pct": round(asym, 1),
+            # 對稱度存 2 位小數不是 1 位:門檻是「< 25%」,而 24.951% 四捨五入
+            # 成 25.0 會在卡片上顯示成剛好等於上限,看起來像篩錯了
+            # (2026-09-02 的 3324 就是這個值)。篩選用的是未四捨五入的值。
+            "dt_pct": round(dt_pct, 2), "asym_pct": round(asym, 2),
             "prev_close": round(prev, 2), "range_pct": round(rng, 2),
             "chg_pct": round(sp * 100.0 / prev, 2) if prev else 0,
             # 相抵報酬率:這筆當沖賺賠佔投入金額多少。振幅門檻的理由就在這欄。
