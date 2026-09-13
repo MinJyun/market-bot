@@ -239,14 +239,18 @@ function draw(el, bars, rows, market, lo, hi, avgLine) {
 }
 
 let IDX = null;                     // demo/index.json
-const CACHE = {};                   // {stock_id: 該股的完整資料}
+let BK = null;                      // 目前選的分點(IDX.brokers 之一)
+let DAY = null;                     // 目前選的日期 YYYY-MM-DD
+const CACHE = {};                   // {"bno-date8-sid": 該股的完整資料}
 
 const yi = v => (v / 1e8).toFixed(2);        // 元 → 億
 const wan = v => Math.round(v / 1e4);        // 元 → 萬
+const d8 = d => d.replace(/-/g, "");
 
-/** 挑選列:每檔一張卡,顯示決定它入選的那三個數字。 */
+/** 挑選列:每檔一張卡,顯示決定它入選的那幾個數字。 */
 function renderPicks(on) {
-  $("#demo-picks").innerHTML = IDX.stocks.map(s => `
+  const list = BK.dates[DAY] || [];
+  $("#demo-picks").innerHTML = list.map(s => `
     <button data-sid="${s.stock_id}" aria-pressed="${s.stock_id === on}">
       <div class="nm">${s.stock_id} ${s.name} <span class="${cls(s.chg_pct)}">${
         fmt(s.chg_pct, 2)}%</span></div>
@@ -255,30 +259,71 @@ function renderPicks(on) {
     + ` · 對稱 ${s.asym_pct}%</div>
       <div class="sub"><span class="${cls(s.dt_pnl)}">${
         fmt(wan(s.dt_pnl), 0)} 萬（${fmt(s.dt_roi, 2)}%）</span></div>
-    </button>`).join("");
+    </button>`).join("")
+    || `<span class="dim">這一天沒有符合條件的個股。</span>`;
   $("#demo-picks").querySelectorAll("button[data-sid]").forEach(b => {
     b.onclick = () => loadStock(b.dataset.sid);
   });
+  $("#demo-head").textContent = `符合條件 ${list.length} 檔`;
 }
 
 /** 換檔:先讀快取,沒有才抓。抓的期間標題先換掉,不然點了像沒反應。 */
 async function loadStock(sid) {
   renderPicks(sid);
-  if (!CACHE[sid]) {
+  const key = `${BK.bno}-${d8(DAY)}-${sid}`;
+  if (!CACHE[key]) {
     $("#demo-title").textContent = `${sid} 載入中…`;
-    CACHE[sid] = await (await fetch(`demo/${sid}.json`)).json();
+    CACHE[key] = await (await fetch(`demo/${key}.json`)).json();
   }
-  D = CACHE[sid];
+  D = CACHE[key];
   render();
+}
+
+/** 換日期:重畫挑選列,並載入該日第一檔。沒有資料的日子只重畫。 */
+async function selectDay(day) {
+  DAY = day;
+  $("#demo-date").value = day;
+  const list = BK.dates[DAY] || [];
+  renderPicks(list[0] && list[0].stock_id);
+  if (list.length) return loadStock(list[0].stock_id);
+  // 沒有符合條件的個股時要把下面清掉,否則留著前一天的圖會被當成這天的
+  D = null;
+  $("#demo-title").textContent = `${DAY} 無符合條件的個股`;
+  $("#demo-kpi").innerHTML = $("#demo-chart").innerHTML = "";
+  $("#demo-table").innerHTML = "";
+}
+
+/** 換分點:日期清單是各分點自己的(不同分點抓的區間可能不同),要重建。 */
+async function selectBroker(bno) {
+  BK = IDX.brokers.find(b => b.bno === bno) || IDX.brokers[0];
+  $("#demo-bno").value = BK.bno;
+  const days = Object.keys(BK.dates).sort().reverse();
+  $("#demo-date").innerHTML =
+    days.map(d => `<option value="${d}">${d}</option>`).join("");
+  renderRule();
+  await selectDay(days[0]);
 }
 
 export async function initDemo() {
   if (IDX) return;
   IDX = await (await fetch("demo/index.json")).json();
-  const p = IDX.params;
-  $("#demo-head").textContent =
-    `${IDX.broker_name}（${IDX.bno}）${IDX.date}　相抵量最大的 ${
-      IDX.stocks.length} 檔`;
+  $("#demo-bno").innerHTML = IDX.brokers.map(b =>
+    `<option value="${b.bno}">${b.name}（${b.bno}）</option>`).join("");
+  $("#demo-bno").onchange = e => selectBroker(e.target.value);
+  $("#demo-date").onchange = e => selectDay(e.target.value);
+  // 深層連結 ?b=9800&d=2026-09-08(沿用既有 ?bno=&sid= 的慣例,但用不同的
+  // 參數名 —— bno+sid 那組是「分點×個股 K 線」的下鑽,語意不同別混用)。
+  const q = new URLSearchParams(location.search);
+  await selectBroker(q.get("b") || IDX.brokers[0].bno);
+  const d = q.get("d");
+  if (d && BK.dates[d]) await selectDay(d);
+}
+
+/** 門檻說明。**各分點自己一組** —— 使用者指出不同分點習性不同,門檻本來就
+ *  該不一樣(元大是全市場最大分點,日常參與率就有 6.5%;換中型分點同一組
+ *  門檻會篩不出東西),所以這段文字要跟著選到的分點重畫。 */
+function renderRule() {
+  const p = BK.params;
   $("#demo-rule").innerHTML =
     `<b>相抵量</b> = min(當日買股數, 賣股數)，即這個分點同日買進又賣出、`
     + `互相抵消掉的部分。篩選條件:該股日線成交額 ≥ <b>${p.min_turnover} 億</b>`
@@ -299,7 +344,6 @@ export async function initDemo() {
     + `相抵量也可能是兩個客戶各做一邊，<b>不等於證交所定義的當沖</b>；`
     + `這是分點資料能逼近的極限。分母一律用日線成交量，不用分點合計`
     + `（分點成交量系統性少於官方成交量）。`;
-  await loadStock(IDX.stocks[0].stock_id);
 }
 
 function render() {

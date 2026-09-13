@@ -44,12 +44,18 @@ UI 上要照這個講法標示,不要寫成「當沖」二字了事。
 
 輸出(都在 web/demo/,已 gitignore —— 含 FinMind 授權的逐筆成交與逐價位,
 本 repo 是 public):
-    index.json     篩選結果清單 + 每檔的指標
-    <股票代號>.json 該股的 quote / 逐筆成交 / 該分點逐價位 / 全市場逐價位
+    index.json                 各分點 × 各日期的篩選結果與指標
+    <分點>-<日期>-<股票>.json   該股當日的 quote / 逐筆成交 / 該分點逐價位 /
+                               全市場逐價位
+
+**index.json 是合併寫入不是覆蓋**,而且 params 掛在各分點底下 —— 不同分點的
+習性不同,門檻本來就該各自調(元大是全市場最大分點,它的日常參與率就有 6.5%;
+換一個中型分點,同一組門檻會篩不出東西)。新增一個分點不該洗掉既有的。
 
 用法:
-    python3 demo_build.py                       # 預設 9800 × 最新交易日
-    python3 demo_build.py --date 2026-09-11 --bno 9800 --limit 20
+    python3 demo_build.py                            # 預設 9800 × 最新交易日
+    python3 demo_build.py --from 2026-09-07 --to 2026-09-11
+    python3 demo_build.py --bno 9268 --min-pct 5     # 換分點通常要換門檻
 """
 import argparse
 import json
@@ -177,6 +183,11 @@ def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit):
             "open": op, "high": hi, "low": lo, "close": cl, "spread": sp,
         })
     out.sort(key=lambda r: -r["dt_amount"])
+    if len(out) > limit:
+        # 出聲,不要靜默截斷 —— 2026-09-09 有 24 檔符合但預設 limit=20,
+        # 少掉的 4 檔看 log 完全不會發現(每天檔數本來就不一樣)。
+        print(f"  ⚠ 符合條件 {len(out)} 檔,--limit={limit} 只取相抵金額前 "
+              f"{limit} 檔,略過 {len(out) - limit} 檔")
     return out[:limit]
 
 
@@ -223,7 +234,11 @@ def build_stock(token, sid, date, bno):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--date", help="交易日 YYYY-MM-DD(預設 DB 最新有資料日)")
+    ap.add_argument("--date", help="單一交易日 YYYY-MM-DD(預設 DB 最新有資料日)")
+    ap.add_argument("--from", dest="d_from", help="起始交易日 YYYY-MM-DD")
+    ap.add_argument("--to", dest="d_to", help="結束交易日 YYYY-MM-DD")
+    ap.add_argument("--force", action="store_true",
+                    help="已存在的個股檔也重抓(預設跳過,省 API 額度)")
     ap.add_argument("--bno", default="9800", help="分點代號")
     ap.add_argument("--limit", type=int, default=20, help="最多取幾檔")
     ap.add_argument("--min-turnover", type=float, default=20.0,
@@ -237,76 +252,121 @@ def main():
     args = ap.parse_args()
 
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-    date8 = (args.date.replace("-", "") if args.date else
-             conn.execute("SELECT MAX(data_date) FROM fetched"
-                          " WHERE rows > 0").fetchone()[0])
-    date = f"{str(date8)[:4]}-{str(date8)[4:6]}-{str(date8)[6:]}"
-
-    picks = screen(conn, int(date8), args.bno, args.min_turnover * 1e8,
-                   args.min_pct, args.max_asym, args.min_range, args.limit)
-    if not picks:
-        sys.exit(f"{date} 分點 {args.bno} 沒有符合條件的個股,放寬門檻再試")
+    if args.d_from or args.d_to:
+        lo = int((args.d_from or "00000000").replace("-", ""))
+        hi = int((args.d_to or "99999999").replace("-", ""))
+        dates8 = [r[0] for r in conn.execute(
+            "SELECT DISTINCT data_date FROM fetched WHERE rows > 0"
+            " AND data_date BETWEEN ? AND ? ORDER BY data_date", (lo, hi))]
+    elif args.date:
+        dates8 = [int(args.date.replace("-", ""))]
+    else:
+        dates8 = [conn.execute("SELECT MAX(data_date) FROM fetched"
+                               " WHERE rows > 0").fetchone()[0]]
+    if not dates8:
+        sys.exit("指定的區間內沒有任何有資料的交易日")
 
     names = stock_names()
     broker = json.loads((HERE / "data" / "broker_names.json").read_text(
         encoding="utf-8")) if (HERE / "data" / "broker_names.json").exists() else {}
     bname = broker.get(args.bno, args.bno)
+    params = {"min_turnover": args.min_turnover, "min_pct": args.min_pct,
+              "max_asym": args.max_asym, "min_range": args.min_range}
 
-    print(f"{date} 分點 {args.bno}({bname}):符合條件 {len(picks)} 檔"
+    print(f"分點 {args.bno}({bname})　{len(dates8)} 個交易日"
           f"(日線成交額≥{args.min_turnover}億、相抵佔量≥{args.min_pct}%、"
           f"對稱度<{args.max_asym}%、振幅≥{args.min_range}%)")
     OUT.mkdir(parents=True, exist_ok=True)
     token = get_token()
 
-    index = []
-    for i, r in enumerate(picks, 1):
-        sid = r["stock_id"]
-        mine, market, ticks, after, raw_n = build_stock(token, sid, date, args.bno)
+    by_date, n_new, n_skip = {}, 0, 0
+    for date8 in dates8:
+        date = f"{str(date8)[:4]}-{str(date8)[4:6]}-{str(date8)[6:]}"
+        picks = screen(conn, int(date8), args.bno, args.min_turnover * 1e8,
+                       args.min_pct, args.max_asym, args.min_range, args.limit)
+        print(f"\n{date}:符合條件 {len(picks)} 檔")
+        if not picks:
+            continue
+        rows = []
+        for i, r in enumerate(picks, 1):
+            sid = r["stock_id"]
+            f = OUT / f"{args.bno}-{date8}-{sid}.json"
+            if f.exists() and not args.force:
+                # 已抓過就不再打 API。同一檔股票在不同日子是不同資料,所以
+                # 檔名帶日期;重跑整週時這個跳過讓它只補新的那幾檔。
+                d = json.loads(f.read_text(encoding="utf-8"))
+                n_tick, n_px = len(d["ticks"]), len(d["broker_price"])
+                n_skip += 1
+                mark = "略過"
+            else:
+                mine, market, ticks, after, raw_n = build_stock(
+                    token, sid, date, args.bno)
+                # 互驗:逐價位加總必須等於 broker_daily 既有的買賣股數。對不上
+                # 表示抓到的不是同一天,或分點代號在兩邊的寫法不同 ——
+                # 停下來,不要出圖。
+                gb, gs = sum(x["b"] for x in mine), sum(x["s"] for x in mine)
+                if (gb, gs) != (r["buy_sh"], r["sell_sh"]):
+                    sys.exit(f"{date} {sid} 逐價位加總 買{gb}/賣{gs} 與 "
+                             f"broker_daily 買{r['buy_sh']}/賣{r['sell_sh']} "
+                             f"不符,中止")
+                f.write_text(json.dumps({
+                    "stock_id": sid, "name": names.get(sid, ""), "date": date,
+                    "bno": args.bno, "broker_name": bname,
+                    "quote": {k: r[k] for k in
+                              ("open", "high", "low", "close", "spread",
+                               "volume", "amount", "prev_close", "range_pct",
+                               "chg_pct")},
+                    "metrics": {k: r[k] for k in
+                                ("dt_sh", "dt_amount", "dt_pct", "asym_pct",
+                                 "net_sh", "dt_pnl", "dt_roi", "part_pct",
+                                 "buy_sh", "sell_sh", "buy_vwap", "sell_vwap")},
+                    "ticks": ticks, "ticks_after": after,
+                    "broker_price": mine, "market_price": market,
+                }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+                n_tick, n_px = len(ticks), len(mine)
+                n_new += 1
+                mark = "抓取"
+                time.sleep(1)
 
-        # 互驗:逐價位加總必須等於 broker_daily 既有的買賣股數。對不上表示
-        # 抓到的不是同一天,或分點代號在兩邊的寫法不同 —— 停下來,不要出圖。
-        gb, gs = sum(x["b"] for x in mine), sum(x["s"] for x in mine)
-        if (gb, gs) != (r["buy_sh"], r["sell_sh"]):
-            sys.exit(f"{sid} 逐價位加總 買{gb}/賣{gs} 與 broker_daily "
-                     f"買{r['buy_sh']}/賣{r['sell_sh']} 不符,中止")
+            rows.append({"stock_id": sid, "name": names.get(sid, ""),
+                         **{k: r[k] for k in
+                            ("dt_sh", "dt_amount", "dt_pct", "asym_pct",
+                             "net_sh", "dt_pnl", "dt_roi", "part_pct",
+                             "volume", "amount", "close", "spread",
+                             "prev_close", "range_pct", "chg_pct")},
+                         "ticks": n_tick, "prices": n_px})
+            kb = f.stat().st_size / 1024
+            print(f"  [{i:>2}/{len(picks)}] {mark} {sid} "
+                  f"{names.get(sid,''):　<6}逐筆 {n_tick:>6} 筆 / "
+                  f"{n_px:>3} 個價位 → {kb:,.0f} KB")
+        by_date[date] = rows
 
-        (OUT / f"{sid}.json").write_text(json.dumps({
-            "stock_id": sid, "name": names.get(sid, ""), "date": date,
-            "bno": args.bno, "broker_name": bname,
-            "quote": {k: r[k] for k in
-                      ("open", "high", "low", "close", "spread",
-                       "volume", "amount", "prev_close", "range_pct",
-                       "chg_pct")},
-            "metrics": {k: r[k] for k in
-                        ("dt_sh", "dt_amount", "dt_pct", "asym_pct", "net_sh",
-                         "dt_pnl", "dt_roi", "part_pct", "buy_sh", "sell_sh",
-                         "buy_vwap", "sell_vwap")},
-            "ticks": ticks, "ticks_after": after,
-            "broker_price": mine, "market_price": market,
-        }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-
-        index.append({"stock_id": sid, "name": names.get(sid, ""),
-                      **{k: r[k] for k in
-                         ("dt_sh", "dt_amount", "dt_pct", "asym_pct", "net_sh",
-                          "dt_pnl", "dt_roi", "part_pct", "volume", "amount",
-                          "close", "spread", "prev_close", "range_pct",
-                          "chg_pct")},
-                      "ticks": len(ticks), "prices": len(mine)})
-        kb = (OUT / f"{sid}.json").stat().st_size / 1024
-        print(f"  [{i}/{len(picks)}] {sid} {names.get(sid,''):　<6}"
-              f"逐筆 {len(ticks):>6} 筆 / 逐價位 {raw_n:>6} 列"
-              f"(該分點 {len(mine)} 個價位) → {kb:,.0f} KB")
-        time.sleep(1)
-
-    (OUT / "index.json").write_text(json.dumps({
-        "date": date, "bno": args.bno, "broker_name": bname,
-        "params": {"min_turnover": args.min_turnover, "min_pct": args.min_pct,
-                   "max_asym": args.max_asym, "min_range": args.min_range},
-        "stocks": index,
-    }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    # index.json 是**合併**寫入不是覆蓋:之後要加別的分點(使用者說各分點的
+    # 習性不同、門檻本來就該不一樣),各分點自帶 params,新增一個不能洗掉
+    # 既有的。同一個 bno 只更新本次跑到的日期。
+    idx_f = OUT / "index.json"
+    idx = {"brokers": []}
+    if idx_f.exists():
+        try:
+            idx = json.loads(idx_f.read_text(encoding="utf-8"))
+            idx.setdefault("brokers", [])
+        except Exception:
+            pass
+    cur = next((b for b in idx["brokers"] if b["bno"] == args.bno), None)
+    if cur is None:
+        cur = {"bno": args.bno, "name": bname, "params": params, "dates": {}}
+        idx["brokers"].append(cur)
+    cur["name"], cur["params"] = bname, params
+    cur["dates"].update(by_date)
+    cur["dates"] = dict(sorted(cur["dates"].items(), reverse=True))
+    idx["brokers"].sort(key=lambda b: b["bno"])
+    idx_f.write_text(json.dumps(idx, ensure_ascii=False,
+                                separators=(",", ":")), encoding="utf-8")
 
     total = sum(f.stat().st_size for f in OUT.glob("*.json")) / 1024 / 1024
-    print(f"完成:{len(index)} 檔,web/demo/ 共 {total:.1f} MB")
+    n = sum(len(v) for v in by_date.values())
+    print(f"\n完成:{len(by_date)} 個交易日 / {n} 檔次"
+          f"(新抓 {n_new}、略過 {n_skip}),web/demo/ 共 {total:.1f} MB")
 
 
 if __name__ == "__main__":

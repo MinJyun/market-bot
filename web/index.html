@@ -19,7 +19,7 @@
       <button id="tab-s">依個股</button>
       <button id="tab-e">主動式ETF</button>
       <button id="tab-m">大盤</button>
-      <button id="tab-d">demo</button>
+      <button id="tab-d">分點日內資料</button>
     </div>
   </div>
 
@@ -204,11 +204,14 @@
     </div>
   </div>
 
-  <!-- demo:日內走勢 × 分點逐價位 -->
+  <!-- 分點日內資料:日內走勢 × 分點逐價位 -->
   <div id="view-d" style="display:none">
     <div class="card">
       <div class="ctl">
-        <h2 id="demo-head" style="margin:0;flex:1">載入中…</h2>
+        <h2 style="margin:0">分點日內資料</h2>
+        <label>分點 <select id="demo-bno"></select></label>
+        <label>日期 <select id="demo-date"></select></label>
+        <span class="dim" id="demo-head"></span>
       </div>
       <div id="demo-picks" class="picks"></div>
       <div class="tip" id="demo-rule"></div>
@@ -226,14 +229,14 @@
       </div>
       <div id="demo-kpi" class="kpi"></div>
       <div class="demo-legend">
-        <span>左：元大逐價位進出（<span class="dn">賣</span>／<span class="up">買</span>）</span>
+        <span>左：該分點逐價位進出（<span class="dn">賣</span>／<span class="up">買</span>）</span>
         <span>右：日內走勢（<span style="color:#e8d44d">黃=成交價</span>、白=當日累計均價）</span>
         <span>下：量能（<span class="up">紅=外盤</span> <span class="dn">綠=內盤</span>）</span>
       </div>
       <div id="demo-chart"></div>
       <div class="tip">
         左右<b>畫在同一張圖、共用價格軸</b>。滑鼠移過走勢會拉一條<b>黃色水平線</b>
-        到左邊,看得出那個時點的價格對應到元大的哪一格;反過來滑左邊的價位,
+        到左邊,看得出那個時點的價格對應到該分點的哪一格;反過來滑左邊的價位,
         水平線會延伸到走勢圖,並顯示<b>該價位當天被觸及幾次、從幾點到幾點</b>。<br>
         <b>做不到的部分</b>:原圖那些「買 309.0／賣 308.0」的掛單軌跡來自
         <b>即時五檔委託揭示</b> —— 盤中當下的狀態,撮合完就消失,沒有歷史資料
@@ -246,7 +249,7 @@
       <h2>逐價位明細</h2>
       <div id="demo-table" class="scroll"></div>
       <div class="tip">張數為原始股數 ÷ 1000,故個別列可能有零股尾差。
-        「元大佔比」= 該價位元大買進 ÷ 全市場該價位成交。</div>
+        最後一欄的佔比 = 該價位這個分點的買進 ÷ 全市場該價位成交。</div>
     </div>
   </div>
 

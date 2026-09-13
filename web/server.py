@@ -45,9 +45,10 @@ STATIC = {
 # 都去打 FinMind 既慢又浪費額度。
 #
 # 檔名逐字元驗證而非「demo/ 底下任意檔案」:白名單的用意就是不讓路徑由請求
-# 決定,開一個目錄再放行等於把那個保護拆掉一半。只收 index 或 4~6 碼股票代號。
+# 決定,開一個目錄再放行等於把那個保護拆掉一半。
+# 只收 index.json 或 <分點>-<日期8碼>-<股票>.json。
 DEMO_DIR = HERE / "demo"
-DEMO_RE = re.compile(r"^(index|[0-9]{4,6}[A-Z]?)\.json$")
+DEMO_RE = re.compile(r"^(index|[0-9A-Z]{3,6}-[0-9]{8}-[0-9]{4,6}[A-Z]?)\.json$")
 
 # 重點分點:UI 預設排在前面。與 finmind_backfill.KEEP_BROKERS 同一份名單,
 # 這裡重複一份以免 web 依賴回補腳本(兩者生命週期不同)。
