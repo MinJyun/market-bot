@@ -1,0 +1,167 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+* { margin:0; padding:0; box-sizing:border-box;
+    font-family:'PingFang TC','Heiti TC',sans-serif; }
+body { width:1020px; background:#eef1f6; padding:10px; }
+.row { display:flex; gap:10px; margin-bottom:10px; }
+.card { background:#fff; border-radius:10px; overflow:hidden; flex:1;
+        box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.hd { background:#1a2f5e; color:#fff; font-size:17px; font-weight:700;
+      padding:8px 14px; }
+.hd small { font-weight:400; opacity:.85; margin-left:8px; font-size:13px; }
+.bd { padding:10px 14px; }
+.up { color:#d0342c; } .dn { color:#1a8a4a; } .flat { color:#666; }
+table { width:100%; border-collapse:collapse; font-size:15px; }
+th { color:#555; font-weight:600; text-align:left; padding:5px 4px;
+     border-bottom:1px solid #dde; font-size:13px; }
+td { padding:5px 4px; border-bottom:1px solid #f0f2f6; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.big { font-size:34px; font-weight:800; letter-spacing:.5px; }
+.mid { font-size:20px; font-weight:700; }
+.lbl { color:#667; font-size:13px; margin-top:8px; }
+.bars { display:flex; align-items:flex-end; gap:14px; height:120px;
+        margin:14px 6px 4px; }
+.bargrp { flex:1; display:flex; flex-direction:column; align-items:center;
+          height:100%; justify-content:flex-end; }
+.barv { font-size:13px; font-weight:700; margin-bottom:2px; }
+.bar { width:34px; border-radius:3px 3px 0 0; }
+.barn { font-size:13px; color:#555; margin-top:4px; }
+.cols { display:flex; gap:10px; }
+.col { flex:1; border:1px solid #e2e6ee; border-radius:8px; padding:8px 10px; }
+.colhd { text-align:center; font-weight:700; font-size:16px; padding:4px 0 6px; }
+.kv { display:flex; justify-content:space-between; font-size:14.5px;
+      padding:2.5px 0; gap:6px; }
+.kv span:first-child { white-space:nowrap; color:#445; }
+.kv b { font-variant-numeric:tabular-nums; text-align:right;
+        white-space:nowrap; }
+.sep { border-top:1px dashed #ccd3e0; margin:6px 0; }
+.donutwrap { display:flex; align-items:center; gap:14px; flex:1; }
+.donut { width:110px; height:110px; border-radius:50%; position:relative; }
+.donut .hole { position:absolute; inset:18px; background:#fff;
+               border-radius:50%; display:flex; align-items:center;
+               justify-content:center; font-weight:800; font-size:17px; }
+.legend { font-size:13.5px; line-height:1.7; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:2px;
+       margin-right:5px; }
+.note { color:#778; font-size:12px; padding:2px 6px 8px; }
+.mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.mtile { border:1px solid #e2e6ee; border-radius:8px; padding:9px 12px; }
+.mname { color:#667; font-size:13.5px; }
+.mval { font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;
+        line-height:1.15; }
+.mchg { font-size:14px; font-weight:700; }
+.etfcol { column-count:2; column-gap:10px; }
+.etfcol .card { flex:none; margin-bottom:10px; break-inside:avoid; }
+.etfrow { display:flex; justify-content:space-between; gap:10px;
+          font-size:14px; padding:2.5px 0; }
+.etfrow span { color:#334; }
+.etfrow b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.etfsub { font-size:13px; font-weight:700; color:#556; margin:6px 0 1px; }
+.etffut { font-size:13px; color:#7a5; font-weight:700; padding:2px 0; }
+.etfflat { color:#889; font-size:13.5px; padding:3px 0; }
+.banner { background:#1a2f5e; color:#fff; font-size:19px; font-weight:800;
+          padding:9px 14px; border-radius:10px; margin-bottom:10px; }
+.banner small { font-weight:400; opacity:.85; font-size:14px; margin-left:8px; }
+.oi { font-weight:400; font-size:12.5px; color:#889; margin-left:6px; }
+.subnote { font-size:12px; color:#556; padding:7px 2px 1px; text-align:center; }
+.muted { color:#8894a5; font-size:11.5px; margin-left:5px; }
+.chgsmall { font-size:11.5px; margin-left:4px; }
+.cols table { font-size:14px; }
+.cols th, .cols td { padding:4px 4px; }
+</style></head><body>
+    <div class="row">
+    <div class="card" style="flex:0 0 300px">
+      <div class="hd">📈 加權指數<small>09/15</small></div>
+      <div class="bd">
+        <div class="lbl">收盤</div>
+        <div class="big dn">45,511.49</div>
+        <div class="dn" style="font-size:16px;font-weight:700">▼ 351.03（-0.77%）</div>
+        <div class="lbl">成交金額</div>
+        <div class="mid">6,347 億</div><div style="font-size:14px">較前日 <span class="dn">-306</span> 億</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="hd">👥 三大法人現貨買賣超<small>09/15</small></div>
+      <div class="bd">
+        <table><tr><th>法人</th><th class="num">買賣超(億)</th></tr><tr><td>外資</td><td class='num'><span class="dn">賣超 -627.0</span></td></tr><tr><td>投信</td><td class='num'><span class="dn">賣超 -19.9</span></td></tr><tr><td>自營</td><td class='num'><span class="dn">賣超 -142.1</span></td></tr><tr><td>合計</td><td class='num'><span class="dn">賣超 -789.0</span></td></tr></table>
+        <div class="bars"><div class="bargrp"><div class="barv">-627.0</div><div class="bar" style="height:69px;background:#1a8a4a"></div><div class="barn">外資</div></div><div class="bargrp"><div class="barv">-19.9</div><div class="bar" style="height:6px;background:#1a8a4a"></div><div class="barn">投信</div></div><div class="bargrp"><div class="barv">-142.1</div><div class="bar" style="height:15px;background:#1a8a4a"></div><div class="barn">自營</div></div><div class="bargrp"><div class="barv">-789.0</div><div class="bar" style="height:88px;background:#1a8a4a"></div><div class="barn">合計</div></div></div>
+      </div>
+    </div>
+                      
+    <div class="card">
+      <div class="hd">👥 上櫃三大法人買賣超<small>09/15</small></div>
+      <div class="bd">
+        <table><tr><th>法人</th><th class="num">買賣超(億)</th></tr><tr><td>外資</td><td class='num'><span class="dn">賣超 -26.3</span></td></tr><tr><td>投信</td><td class='num'><span class="up">買超 12.2</span></td></tr><tr><td>自營</td><td class='num'><span class="dn">賣超 -8.6</span></td></tr><tr><td>合計</td><td class='num'><span class="dn">賣超 -22.8</span></td></tr></table>
+        <div class="bars"><div class="bargrp"><div class="barv">-26.3</div><div class="bar" style="height:88px;background:#1a8a4a"></div><div class="barn">外資</div></div><div class="bargrp"><div class="barv">12.2</div><div class="bar" style="height:40px;background:#d0342c"></div><div class="barn">投信</div></div><div class="bargrp"><div class="barv">-8.6</div><div class="bar" style="height:28px;background:#1a8a4a"></div><div class="barn">自營</div></div><div class="bargrp"><div class="barv">-22.8</div><div class="bar" style="height:76px;background:#1a8a4a"></div><div class="barn">合計</div></div></div>
+      </div>
+    </div></div>
+    <div class="row">
+    <div class="card" style="flex:0 0 360px">
+      <div class="hd">⚖️ 融資融券／借券<small>09/15</small></div>
+      <div class="bd"><table>
+        <tr><th>項目</th><th class="num">數值</th><th class="num">較前日</th></tr>
+        <tr><td>融資餘額</td><td class='num'><b>9,190,511 張</b></td><td class='num'><span class="up">+24,792</span></td></tr><tr><td>融資金額</td><td class='num'><b>5,822.4 億</b></td><td class='num'><span class="dn">-16.4 億</span></td></tr><tr><td>融資維持率(估)</td><td class='num'><b>180.2 %</b></td><td class='num'><span class="dn">-3.0</span></td></tr><tr><td>融券餘額</td><td class='num'><b>198,052 張</b></td><td class='num'><span class="dn">-3,434</span></td></tr><tr><td>借券賣出餘額</td><td class='num'><b>31,914,977 張</b></td><td class='num'><span class="up">+333,159</span></td></tr></table></div>
+    </div>
+    <div class="card">
+      <div class="hd">🍩 臺指選擇權 Put/Call Ratio<small>09/15</small></div>
+      <div class="bd"><div class="cols">
+        
+    <div class="donutwrap">
+      <div>
+        <div class="lbl">成交量比</div>
+        <div class="mid">106.44%</div>
+        <div style="font-size:14px"><span class="dn">-0.65</span></div>
+      </div>
+      <div class="donut" style="background:conic-gradient(#d0342c 0 51.6%,#3358a8 51.6% 100%)">
+        <div class="hole">106.4%</div>
+      </div>
+      <div class="legend">
+        <span class="dot" style="background:#d0342c"></span>賣(Put) 172,547 口<br>
+        <span class="dot" style="background:#3358a8"></span>買(Call) 162,102 口
+      </div>
+    </div>
+        
+    <div class="donutwrap">
+      <div>
+        <div class="lbl">未平倉比</div>
+        <div class="mid">85.89%</div>
+        <div style="font-size:14px"><span class="dn">-2.15</span></div>
+      </div>
+      <div class="donut" style="background:conic-gradient(#d0342c 0 46.2%,#3358a8 46.2% 100%)">
+        <div class="hole">85.9%</div>
+      </div>
+      <div class="legend">
+        <span class="dot" style="background:#d0342c"></span>賣(Put) 81,556 口<br>
+        <span class="dot" style="background:#3358a8"></span>買(Call) 94,956 口
+      </div>
+    </div>
+      </div></div>
+    </div></div>
+    <div class="row">
+    <div class="card">
+      <div class="hd">📊 期貨機構籌碼<small>09/15(未平倉多空淨額/口,+多 −空;前五/十大為特定法人淨)</small></div>
+      <div class="bd"><div class="cols"><div class="col"><div class="colhd">台指期<span class="oi">未平倉 119,787 口</span></div><table><tr><th>身份</th><th class="num">淨部位(口)</th><th class="num">前日Δ</th></tr><tr><td>外資</td><td class="num"><span class="dn">-83,223</span></td><td class="num"><span class="dn">-565</span></td></tr><tr><td>投信</td><td class="num"><span class="up">+72,417</span></td><td class="num"><span class="dn">-2,031</span></td></tr><tr><td>自營</td><td class="num"><span class="up">+1,579</span></td><td class="num"><span class="dn">-381</span></td></tr><tr><td>前五大</td><td class="num"><span class="up">+17,190</span></td><td class="num"><span class="dn">-2,829</span></td></tr><tr><td>前十大</td><td class="num"><span class="dn">-785</span></td><td class="num"><span class="dn">-2,490</span></td></tr></table><div class="colhd" style="margin-top:8px">今日交易(口)</div><table><tr><th>身份</th><th class="num">日盤</th><th class="num">夜盤</th><th class="num">全日</th></tr><tr><td>外資</td><td class="num"><span class="up">+412</span></td><td class="num"><span class="dn">-1,005</span></td><td class="num"><span class="dn">-593</span></td></tr><tr><td>投信</td><td class="num"><span class="dn">-2,030</span></td><td class="num"><span class="dn">-1</span></td><td class="num"><span class="dn">-2,031</span></td></tr><tr><td>自營</td><td class="num"><span class="dn">-739</span></td><td class="num"><span class="up">+374</span></td><td class="num"><span class="dn">-365</span></td></tr></table><div class="subnote">外資估算成本 <b>43,442</b>｜結算 45,592｜<span class="dn">浮虧 358 億</span><span class="muted">自03-02</span></div></div><div class="col"><div class="colhd">電子期<span class="oi">未平倉 489 口</span></div><table><tr><th>身份</th><th class="num">淨部位(口)</th><th class="num">前日Δ</th></tr><tr><td>外資</td><td class="num"><span class="dn">-177</span></td><td class="num"><span class="dn">-28</span></td></tr><tr><td>投信</td><td class="num"><span class="up">+174</span></td><td class="num"><span class="up">+27</span></td></tr><tr><td>自營</td><td class="num"><span class="dn">-120</span></td><td class="num"><span class="up">+16</span></td></tr><tr><td>前五大</td><td class="num"><span class="dn">-200</span></td><td class="num"><span class="up">+18</span></td></tr><tr><td>前十大</td><td class="num"><span class="dn">-205</span></td><td class="num"><span class="up">+14</span></td></tr></table></div><div class="col"><div class="colhd">金融期<span class="oi">未平倉 491 口</span></div><table><tr><th>身份</th><th class="num">淨部位(口)</th><th class="num">前日Δ</th></tr><tr><td>外資</td><td class="num"><span class="dn">-91</span></td><td class="num"><span class="dn">-55</span></td></tr><tr><td>投信</td><td class="num"><span class="up">+34</span></td><td class="num"><span class="flat">+0</span></td></tr><tr><td>自營</td><td class="num"><span class="dn">-7</span></td><td class="num"><span class="dn">-1</span></td></tr><tr><td>前五大</td><td class="num"><span class="dn">-173</span></td><td class="num"><span class="dn">-27</span></td></tr><tr><td>前十大</td><td class="num"><span class="dn">-148</span></td><td class="num"><span class="dn">-51</span></td></tr></table></div></div></div>
+    </div></div>
+    <div class="row">
+    <div class="card">
+      <div class="hd">🧩 臺指選擇權機構籌碼<small>09/15(未平倉淨口數;前五/十大為所有契約特定法人)</small></div>
+      <div class="bd"><div class="cols"><div class="col" style="flex:0 0 360px"><div class="colhd">三大法人淨(不分買賣權)</div><table><tr><th>身份</th><th class="num">淨部位(口)</th><th class="num">前日Δ</th></tr><tr><td>外資</td><td class="num"><span class="dn">-2,985</span></td><td class="num"><span class="dn">-150</span></td></tr><tr><td>投信</td><td class="num"><span class="dn">-6,515</span></td><td class="num"><span class="dn">-540</span></td></tr><tr><td>自營</td><td class="num"><span class="up">+17,974</span></td><td class="num"><span class="up">+2,481</span></td></tr></table><div class="colhd" style="margin-top:8px">Call／Put 淨OI(值+前日Δ)</div><table><tr><th>身份</th><th class="num">Call</th><th class="num">Put</th></tr><tr><td>外資</td><td class="num"><span class="dn">-180</span><span class="chgsmall"><span class="up">+691</span></span></td><td class="num"><span class="up">+2,805</span><span class="chgsmall"><span class="up">+841</span></span></td></tr><tr><td>投信</td><td class="num"><span class="dn">-6,409</span><span class="chgsmall"><span class="dn">-540</span></span></td><td class="num"><span class="up">+106</span><span class="chgsmall"><span class="flat">+0</span></span></td></tr><tr><td>自營</td><td class="num"><span class="up">+10,331</span><span class="chgsmall"><span class="dn">-1,055</span></span></td><td class="num"><span class="dn">-7,643</span><span class="chgsmall"><span class="dn">-3,536</span></span></td></tr></table></div>
+        <div class="col" style="background:#eef4ff">
+          <div class="colhd">臺指Call<span class="oi">未平倉 94,956 口</span></div>
+          <div class="colhd" style="margin-top:8px">今日交易·三大法人(口)</div><table><tr><th>身份</th><th class="num">日盤</th><th class="num">夜盤</th><th class="num">全日</th></tr><tr><td>外資</td><td class="num"><span class="up">+554</span></td><td class="num"><span class="up">+137</span></td><td class="num"><span class="up">+691</span></td></tr><tr><td>投信</td><td class="num"><span class="dn">-540</span></td><td class="num"><span class="flat">+0</span></td><td class="num"><span class="dn">-540</span></td></tr><tr><td>自營</td><td class="num"><span class="up">+1,671</span></td><td class="num"><span class="dn">-2,726</span></td><td class="num"><span class="dn">-1,055</span></td></tr></table>
+          <table><tr><th>特定法人</th><th class="num">買(前日Δ)</th><th class="num">賣(前日Δ)</th></tr>
+            <tr><td>前五大</td><td class="num">4,579<span class="chgsmall"><span class="up">+192</span></span></td><td class="num">5,580<span class="chgsmall"><span class="dn">-928</span></span></td></tr>
+            <tr><td>前十大</td><td class="num">6,486<span class="chgsmall"><span class="up">+781</span></span></td><td class="num">11,111<span class="chgsmall"><span class="up">+737</span></span></td></tr>
+          </table>
+        </div>
+        <div class="col" style="background:#fdeeee">
+          <div class="colhd">臺指Put<span class="oi">未平倉 81,556 口</span></div>
+          <div class="colhd" style="margin-top:8px">今日交易·三大法人(口)</div><table><tr><th>身份</th><th class="num">日盤</th><th class="num">夜盤</th><th class="num">全日</th></tr><tr><td>外資</td><td class="num"><span class="up">+1,058</span></td><td class="num"><span class="dn">-217</span></td><td class="num"><span class="up">+841</span></td></tr><tr><td>投信</td><td class="num"><span class="flat">+0</span></td><td class="num"><span class="flat">+0</span></td><td class="num"><span class="flat">+0</span></td></tr><tr><td>自營</td><td class="num"><span class="dn">-5,243</span></td><td class="num"><span class="up">+1,707</span></td><td class="num"><span class="dn">-3,536</span></td></tr></table>
+          <table><tr><th>特定法人</th><th class="num">買(前日Δ)</th><th class="num">賣(前日Δ)</th></tr>
+            <tr><td>前五大</td><td class="num">1,941<span class="chgsmall"><span class="flat">+0</span></span></td><td class="num">4,694<span class="chgsmall"><span class="up">+20</span></span></td></tr>
+            <tr><td>前十大</td><td class="num">5,706<span class="chgsmall"><span class="up">+132</span></span></td><td class="num">6,924<span class="chgsmall"><span class="up">+151</span></span></td></tr>
+          </table>
+        </div></div></div>
+    </div></div>
+    <div class="note">單位除另有說明外為口或張;金額為億元。外資成本與維持率為估算。</div>
+    </body></html>
