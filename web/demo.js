@@ -258,8 +258,11 @@ function renderPicks(on) {
       <div class="sub">成交額 ${yi(s.amount)} 億 · 振幅 ${s.range_pct}%`
     + ` · 對稱 ${s.asym_pct}%</div>
       <div class="sub"><span class="${cls(s.dt_pnl)}">${
-        fmt(wan(s.dt_pnl), 0)} 萬（${fmt(s.dt_roi, 2)}%）</span></div>
-    </button>`).join("")
+        fmt(wan(s.dt_pnl), 0)} 萬（${fmt(s.dt_roi, 2)}%）</span></div>`
+    + ((s.fails || []).length
+        ? `<div class="sub miss">指定納入・未過 ${s.fails.join("、")}</div>`
+        : "")
+    + `</button>`).join("")
     || `<span class="dim">這一天沒有符合條件的個股。</span>`;
   $("#demo-picks").querySelectorAll("button[data-sid]").forEach(b => {
     b.onclick = () => loadStock(b.dataset.sid);
@@ -348,8 +351,14 @@ function renderRule() {
 
 function render() {
   const q = D.quote || {}, m = D.metrics || {};
+  // fails 以 index.json 為準,不用個股檔裡那份 —— 已存在的個股檔在重跑時會被
+  // 略過(不重打 API),所以它的 fails 停在抓取當下;index.json 每次都重算。
+  // 門檻改過之後兩邊就會不一致,以每次重算的那份為準。
+  const ent = (BK.dates[DAY] || []).find(x => x.stock_id === D.stock_id) || {};
+  const miss = (ent.fails || []).length
+    ? `　⚠ 指定納入，未過 ${ent.fails.join("、")}` : "";
   $("#demo-title").textContent =
-    `${D.name}（${D.stock_id}）× ${D.broker_name}（${D.bno}）　${D.date}`;
+    `${D.name}（${D.stock_id}）× ${D.broker_name}（${D.bno}）　${D.date}${miss}`;
   $("#demo-kpi").innerHTML =
     `<div><div class="k">平盤</div><div class="v dim">${q.prev_close}</div></div>
      <div><div class="k">開</div><div class="v">${q.open}</div></div>

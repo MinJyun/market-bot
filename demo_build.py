@@ -137,8 +137,16 @@ def stock_names():
     return out
 
 
-def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit):
-    """挑出該分點當日「相抵量」最可觀的幾檔。回傳 dict 清單。"""
+def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit,
+           force_ids=()):
+    """挑出該分點當日「相抵量」最可觀的幾檔。回傳 dict 清單。
+
+    `force_ids` 裡的個股**不論有沒有過門檻都納入**,並在 `fails` 欄記下它沒過
+    哪幾關 —— 使用者會憑印象說「這分點今天有做某某股」,而「有做」跟「純當沖」
+    是兩回事(2026-09-16 華邦電:元大買 8,753 張、賣 5,735 張,相抵 9.55 億確實
+    很大,但淨買超 3,018 張、對稱度 52.6%,是邊沖邊建倉)。把它放進來但標明
+    沒過哪關,比直接篩掉或悄悄放寬門檻都誠實。
+    """
     rows = conn.execute("""
         SELECT b.stock_id,
                MIN(b.buy_sh, b.sell_sh)                       AS dt_sh,
@@ -160,12 +168,16 @@ def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit):
         asym = abs(buy - sell) * 100.0 / dt_sh
         prev = cl - sp                      # 昨收 = 今收 − 當日漲跌點數
         rng = (hi - lo) * 100.0 / prev if prev else 0
-        if (amt < min_turnover or dt_pct < min_pct or asym >= max_asym
-                or rng < min_range):
+        fails = []
+        if amt < min_turnover:  fails.append("成交額")
+        if dt_pct < min_pct:    fails.append("佔量")
+        if asym >= max_asym:    fails.append("對稱度")
+        if rng < min_range:     fails.append("振幅")
+        if fails and sid not in force_ids:
             continue
         dt_pnl = round((sv - bv) * dt_sh) if bv and sv else 0
         out.append({
-            "stock_id": sid,
+            "stock_id": sid, "fails": fails,
             "dt_sh": dt_sh, "dt_amount": round(dt_amt),
             # 對稱度存 2 位小數不是 1 位:門檻是「< 25%」,而 24.951% 四捨五入
             # 成 25.0 會在卡片上顯示成剛好等於上限,看起來像篩錯了
@@ -186,12 +198,15 @@ def screen(conn, date8, bno, min_turnover, min_pct, max_asym, min_range, limit):
             "open": op, "high": hi, "low": lo, "close": cl, "spread": sp,
         })
     out.sort(key=lambda r: -r["dt_amount"])
-    if len(out) > limit:
+    # limit 只砍真的過門檻的那些;強制納入的是使用者指名要看的,不能被砍掉
+    passed = [r for r in out if not r["fails"]]
+    forced = [r for r in out if r["fails"]]
+    if len(passed) > limit:
         # 出聲,不要靜默截斷 —— 2026-09-09 有 24 檔符合但預設 limit=20,
         # 少掉的 4 檔看 log 完全不會發現(每天檔數本來就不一樣)。
-        print(f"  ⚠ 符合條件 {len(out)} 檔,--limit={limit} 只取相抵金額前 "
-              f"{limit} 檔,略過 {len(out) - limit} 檔")
-    return out[:limit]
+        print(f"  ⚠ 符合條件 {len(passed)} 檔,--limit={limit} 只取相抵金額前 "
+              f"{limit} 檔,略過 {len(passed) - limit} 檔")
+    return sorted(passed[:limit] + forced, key=lambda r: -r["dt_amount"])
 
 
 def build_stock(token, sid, date, bno):
@@ -240,6 +255,9 @@ def main():
     ap.add_argument("--date", help="單一交易日 YYYY-MM-DD(預設 DB 最新有資料日)")
     ap.add_argument("--from", dest="d_from", help="起始交易日 YYYY-MM-DD")
     ap.add_argument("--to", dest="d_to", help="結束交易日 YYYY-MM-DD")
+    ap.add_argument("--stocks", default="",
+                    help="逗號分隔的股票代號,不論有沒有過門檻都納入;"
+                         "會標明它沒過哪幾關")
     ap.add_argument("--force", action="store_true",
                     help="已存在的個股檔也重抓(預設跳過,省 API 額度)")
     ap.add_argument("--bno", default="9800", help="分點代號")
@@ -255,6 +273,7 @@ def main():
     args = ap.parse_args()
 
     conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    force_ids = {x.strip() for x in args.stocks.split(",") if x.strip()}
     if args.d_from or args.d_to:
         lo = int((args.d_from or "00000000").replace("-", ""))
         hi = int((args.d_to or "99999999").replace("-", ""))
@@ -286,8 +305,12 @@ def main():
     for date8 in dates8:
         date = f"{str(date8)[:4]}-{str(date8)[4:6]}-{str(date8)[6:]}"
         picks = screen(conn, int(date8), args.bno, args.min_turnover * 1e8,
-                       args.min_pct, args.max_asym, args.min_range, args.limit)
-        print(f"\n{date}:符合條件 {len(picks)} 檔")
+                       args.min_pct, args.max_asym, args.min_range, args.limit,
+                       force_ids)
+        n_pass = sum(1 for r in picks if not r["fails"])
+        print(f"\n{date}:符合條件 {n_pass} 檔"
+              + (f"、指定納入 {len(picks) - n_pass} 檔"
+                 if len(picks) > n_pass else ""))
         if not picks:
             continue
         rows = []
@@ -315,6 +338,7 @@ def main():
                 f.write_text(json.dumps({
                     "stock_id": sid, "name": names.get(sid, ""), "date": date,
                     "bno": args.bno, "broker_name": bname,
+                    "fails": r["fails"],
                     "quote": {k: r[k] for k in
                               ("open", "high", "low", "close", "spread",
                                "volume", "amount", "prev_close", "range_pct",
@@ -332,6 +356,7 @@ def main():
                 time.sleep(1)
 
             rows.append({"stock_id": sid, "name": names.get(sid, ""),
+                         "fails": r["fails"],
                          **{k: r[k] for k in
                             ("dt_sh", "dt_amount", "dt_pct", "asym_pct",
                              "net_sh", "dt_pnl", "dt_roi", "part_pct",

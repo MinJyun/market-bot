@@ -75,3 +75,6 @@ tr.pick:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
   background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .picks .nm{font-size:13px;font-weight:600}
 .picks .sub{font-size:11px;color:var(--dim)}
+/* 指定納入(沒過門檻)的卡要一眼看得出來,不然會被當成篩選結果 */
+.picks .miss{color:var(--dn)}
+.picks button:has(.miss){border-style:dashed}
