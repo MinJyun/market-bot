@@ -138,6 +138,12 @@ def fetch(conn):
 
 
 def build_message(conn):
+    # 跨越休市的早報(週一、連假收假後)不報夜盤:那段期間台股沒開,DB 裡最新
+    # 的夜盤是休市前最後一晚、且已在當時的早報報過,重貼會被當成新資料
+    from datetime import date
+    from core import tw_calendar as cal
+    if cal.morning_mode(conn, date.today()) == "special":
+        return None, {}
     row = conn.execute(
         "SELECT data_date, close, chg, chg_pct, high, low, volume "
         "FROM fut_night ORDER BY data_date DESC LIMIT 1").fetchone()

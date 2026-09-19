@@ -18,7 +18,7 @@ import sys
 from datetime import date, datetime
 
 from core import notify as notifier
-from core import store
+from core import store, tw_calendar
 from sources import (active_etf, fedwatch, fut_night, futures_traders,
                      inst_otc, inst_spot, inst_stock, macro, margin,
                      market_index, my_chips, options_traders, pc_ratio)
@@ -78,6 +78,12 @@ def main():
     # 統一建表:report/notify 單獨執行(或跨來源查詢)也不會缺表
     for s in SOURCES.values():
         s.init(conn)
+    # 交易日曆:早報分版與連假靜默都要用。證交所有限流,已有該年資料就不再抓;
+    # 明年的表通常年底才公告,故只在 12 月順帶備妥
+    tw_calendar.init(conn)
+    tw_calendar.ensure(conn, date.today().year)
+    if date.today().month == 12:
+        tw_calendar.ensure(conn, date.today().year + 1)
 
     def active(s):
         return only is None or s.NAME in only
@@ -121,6 +127,10 @@ def main():
                     lo, hi = SEND_WINDOW[key]
                     if not (lo <= datetime.now().hour < hi):
                         hold = f"只在 {lo}~{hi} 點間推播"
+                if hold is None and key == "morning":
+                    # 台股連假期間靜默:收假後第一天的早報會涵蓋整段變化
+                    if tw_calendar.morning_mode(conn, date.today()) == "skip":
+                        hold = "台股連假期間"
                 if hold is None and key == "chips_pre":
                     from core import dashboard
                     if not dashboard.chips_pre_ready(conn):

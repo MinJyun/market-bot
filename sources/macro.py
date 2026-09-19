@@ -34,7 +34,23 @@ YAHOO_SERIES = [
     ("VIX", "^VIX", "VIX", 2, ""),
     ("SOX", "^SOX", "費半", 0, ""),
     ("SPX", "^GSPC", "S&P500", 0, ""),
+    # 以下只在休市特別版用:實測近 4 個週末,這些在台灣週一 08:10 前
+    # 已有新報價(加密 24/7、CME 週日 18:00 ET 開盤、FX 週日 17:00 ET 開),
+    # 而 ^SOX/^GSPC/^VIX/^TNX 現貨指數週末完全沒有 K
+    ("BTC", "BTC-USD", "比特幣", 0, ""),
+    ("ES", "ES=F", "S&P500期貨", 0, ""),
+    ("NQ", "NQ=F", "那斯達克期貨", 0, ""),
+    ("NKD", "NKD=F", "日經期貨", 0, ""),
+    ("JPYX", "JPY=X", "美元/日圓", 2, ""),   # 期交所 USDJPY 週末不公布
 ]
+# 一般版欄位(維持原樣,新序列不進一般版)
+NORMAL = ["DXY", "WTI", "GOLD", "US10Y", "VIX", "SOX", "SPX"]
+# 休市特別版:休市期間真的會動的
+SPECIAL_CRYPTO = ["BTC"]
+SPECIAL_FUT = ["ES", "NQ", "NKD"]
+SPECIAL_CMDTY = ["WTI", "GOLD", "DXY", "JPYX"]
+# 特別版末尾附註:休市期間不會動,只能報前一交易日收盤
+SPECIAL_STALE = ["SOX", "SPX", "VIX"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS macro (
@@ -114,8 +130,86 @@ def _latest2(conn, symbol):
         "ORDER BY data_date DESC LIMIT 2", (symbol,)).fetchall()
 
 
+def _on_or_before(conn, symbol, d):
+    """symbol 在 d(含)之前最近一筆 (data_date, value);沒有回 None。"""
+    return conn.execute(
+        "SELECT data_date, value FROM macro WHERE symbol=? AND data_date<=? "
+        "ORDER BY data_date DESC LIMIT 1", (symbol, d.isoformat())).fetchone()
+
+
+def build_special_message(conn, base):
+    """休市特別版:全部欄位對比 base(前一交易日)收盤,而非對比前一筆。
+
+    BTC 是 24/7,DB 裡週六日都有 K,用「對比前一筆」只會得到「週一 vs 週日」
+    ——要的是整段休市期間的變化,所以基準一律取 base。
+    """
+    names = {s: (n, dec, suf) for s, _, n, dec, suf in YAHOO_SERIES}
+    sig, out, stale = {}, {}, []
+
+    def fmt(symbol):
+        """回傳 '名稱 值（+x.xx%）';無新報價回 None。"""
+        name, dec, suf = names[symbol]
+        latest = conn.execute(
+            "SELECT data_date, value FROM macro WHERE symbol=? "
+            "ORDER BY data_date DESC LIMIT 1", (symbol,)).fetchone()
+        prior = _on_or_before(conn, symbol, base)
+        if not latest or not prior:
+            return None
+        sig[symbol] = latest[0]
+        if latest[0] <= base.isoformat():      # 休市後還沒出現新報價
+            stale.append(f"{name} {latest[1]:,.{dec}f}{suf}")
+            return None
+        chg = (latest[1] - prior[1]) / prior[1] * 100 if prior[1] else 0
+        # Yahoo 偶發缺當日 close(實見 BTC 2026-09-18 回 null),基準會退到更早
+        # 一天、漲跌幅多含一天 — 標出實際基準日,不讓它默默混進去
+        note = "" if prior[0] == base.isoformat() else f",對比{prior[0][5:]}"
+        return f"{name} {latest[1]:,.{dec}f}{suf}（{chg:+.2f}%{note}）"
+
+    for group, title in ((SPECIAL_CRYPTO, None),
+                         (SPECIAL_FUT, "📈 美股/日股期貨"),
+                         (SPECIAL_CMDTY, "🛢 商品/匯率")):
+        rows = [r for r in (fmt(s) for s in group) if r]
+        if rows:
+            out[title] = rows
+
+    # 現貨指數休市期間不動,只能報基準日收盤;與上面「該動卻沒動」的合併附註
+    for symbol in SPECIAL_STALE:
+        row = _on_or_before(conn, symbol, base)
+        if row:
+            name, dec, suf = names[symbol]
+            sig[symbol] = row[0]
+            stale.append(f"{name} {row[1]:,.{dec}f}{suf}")
+
+    if not out:
+        return None, {}
+    lines = []
+    for title, rows in out.items():
+        if title:
+            lines.append("")
+            lines.append(title)
+        lines.extend(rows)
+    if stale:
+        lines.append("")
+        lines.append(f"▍以下為 {base:%m/%d}({'一二三四五六日'[base.weekday()]}) "
+                     f"收盤,休市期間未更新")
+        lines.append("　".join(stale))
+    return "\n".join(lines).lstrip("\n"), sig
+
+
 def build_message(conn):
     # 所屬的 chips 組由 main.py 控制在 21 點後才推播(美股/油金更新後)
+    from datetime import date
+    from core import tw_calendar as cal
+    today = date.today()
+    if cal.morning_mode(conn, today) == "special":
+        base = cal.prev_trading_day(conn, today)
+        text, sig = build_special_message(conn, base)
+        if not text:
+            return None, {}
+        head = (f"🌍 休市期間變化 {today:%m/%d}"
+                f"(對比 {base:%m/%d} 收盤)")
+        return f"{head}\n{text}", sig
+
     lines, sig = [], {}
 
     def add(symbol, name, dec, suffix="", pct=True, extra=""):
@@ -138,6 +232,8 @@ def build_message(conn):
     add("USDTWD", "美元/台幣", 3, extra=trend)
     add("USDJPY", "美元/日圓", 2)
     for symbol, _, name, dec, suffix in YAHOO_SERIES:
+        if symbol not in NORMAL:
+            continue
         # 美債殖利率本身是 %,漲跌用絕對值(百分點)而非 %
         add(symbol, name, dec, suffix, pct=(symbol != "US10Y"))
     if not lines:

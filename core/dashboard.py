@@ -473,7 +473,60 @@ def _fedwatch_block(conn):
             + "".join(trs) + '</table>')
 
 
+def _sec_macro_special(conn, base):
+    """休市特別版的總經卡:只放休市期間真的會動的,全部對比 base 收盤。
+
+    文字版在 sources/macro.build_special_message,兩邊共用同一組欄位定義與
+    取值規則(macro.SPECIAL_*),以免圖文說法不一致。
+    """
+    from sources import macro
+    names = {s: (n, dec, suf) for s, _, n, dec, suf in macro.YAHOO_SERIES}
+    tiles, stale = [], []
+    for sym in macro.SPECIAL_CRYPTO + macro.SPECIAL_FUT + macro.SPECIAL_CMDTY:
+        name, dec, suf = names[sym]
+        latest = conn.execute(
+            "SELECT data_date, value FROM macro WHERE symbol=? "
+            "ORDER BY data_date DESC LIMIT 1", (sym,)).fetchone()
+        prior = macro._on_or_before(conn, sym, base)
+        if not latest or not prior:
+            continue
+        if latest[0] <= base.isoformat():      # 休市後尚無新報價
+            stale.append((name, latest[1], dec, suf))
+            continue
+        chg = (latest[1] - prior[1]) / prior[1] * 100 if prior[1] else 0
+        cls = "up" if chg > 0 else ("dn" if chg < 0 else "flat")
+        note = "" if prior[0] == base.isoformat() else f" 對比{prior[0][5:]}"
+        tiles.append(
+            f'<div class="mtile"><div class="mname">{name}</div>'
+            f'<div class="mval {cls}">{latest[1]:,.{dec}f}{suf}</div>'
+            f'<div class="mchg {cls}">{chg:+.2f}%{note}</div></div>')
+    for sym in macro.SPECIAL_STALE:
+        row = macro._on_or_before(conn, sym, base)
+        if row:
+            name, dec, suf = names[sym]
+            stale.append((name, row[1], dec, suf))
+    if not tiles and not stale:
+        return "", None
+    for name, v, dec, suf in stale:
+        tiles.append(
+            f'<div class="mtile"><div class="mname">{name}</div>'
+            f'<div class="mval flat">{v:,.{dec}f}{suf}</div>'
+            f'<div class="mchg flat">休市未更新</div></div>')
+    html = f"""
+    <div class="card">
+      <div class="hd">🌍 休市期間變化<small>對比 {base:%m/%d} 收盤</small></div>
+      <div class="bd"><div class="mgrid">{''.join(tiles)}</div>
+      {_fedwatch_block(conn)}</div>
+    </div>"""
+    return html, conn.execute("SELECT MAX(data_date) FROM macro").fetchone()[0]
+
+
 def _sec_macro(conn):
+    from datetime import date as _date
+    from core import tw_calendar as cal
+    if cal.morning_mode(conn, _date.today()) == "special":
+        return _sec_macro_special(conn, cal.prev_trading_day(conn, _date.today()))
+
     def latest2(sym):
         return conn.execute(
             "SELECT data_date, value FROM macro WHERE symbol=? "
@@ -582,16 +635,26 @@ def _sec_fut_night(conn):
 
 
 def render_morning(conn):
-    """早上圖:國際總經 + 台指期夜盤。回傳 (png path, 資料日) 或 None。"""
+    """早上圖:國際總經 + 台指期夜盤。回傳 (png path, 資料日) 或 None。
+
+    跨越休市的早報(週一、連假收假後)走特別版:那段期間台股沒開、沒有新夜盤,
+    夜盤卡略過,總經卡改報休市期間的國際變化。
+    """
+    from datetime import date as _date
+    from core import tw_calendar as cal
+    special = cal.morning_mode(conn, _date.today()) == "special"
     macro_html, mdd = _sec_macro(conn)
-    fut_html, fdd = _sec_fut_night(conn)
+    fut_html, fdd = ("", None) if special else _sec_fut_night(conn)
     if not macro_html and not fut_html:
         return None
+    note = ("休市期間的國際市場變化;台股休市無夜盤。加密貨幣 24 小時交易,"
+            "期貨為週日晚間開盤後報價。" if special else
+            "美股數值為台北時間清晨的美國收盤;夜盤歸屬次一交易日。")
     body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <style>{CSS}</style></head><body>
     <div class="row">{macro_html}</div>
     <div class="row">{fut_html}</div>
-    <div class="note">美股數值為台北時間清晨的美國收盤;夜盤歸屬次一交易日。</div>
+    <div class="note">{note}</div>
     </body></html>"""
     return _screenshot(body, "morning.png"), (mdd or fdd)
 
