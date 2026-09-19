@@ -23,6 +23,7 @@ NAME = "my_chips"
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / "trade-sync" / ".env"
 HOLD_TAB = "每日持股"    # trade-sync 分年度 tab 前綴
 OUT_TAB = "持股籌碼"
+SHEET_TIMEOUT = 30       # 秒;gspread 會一併套用到 token refresh
 HEADER = ["日期", "股名", "持有股數", "外資買賣超(張)", "投信(張)", "自營(張)",
           "合計(張)", "融資餘額(張)", "融資增減", "融券餘額(張)", "融券增減",
           "借券賣出(張)", "借券增減"]
@@ -59,7 +60,11 @@ def _spreadsheet():
     creds = Credentials.from_service_account_info(
         json.loads(env["GOOGLE_SERVICE_ACCOUNT_JSON"]),
         scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    return gspread.authorize(creds).open_by_key(env["GOOGLE_SHEET_ID"])
+    client = gspread.authorize(creds)
+    # 不設 timeout 的話對面不回就永遠 blocking read,整輪排程卡死、後續
+    # 排程被 launchd 跳過(2026-09-18 21:41 那輪卡 14 小時,吃掉隔天早報)
+    client.set_timeout(SHEET_TIMEOUT)
+    return client.open_by_key(env["GOOGLE_SHEET_ID"])
 
 
 def _iso(s):

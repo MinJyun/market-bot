@@ -11,8 +11,27 @@ for i in {1..10}; do
     sleep 30
 done
 
-/usr/bin/python3 -W ignore main.py daily
+# 整輪上限 20 分鐘:任何一處網路呼叫 hang 住都不能佔住 launchd 的 job,
+# 否則同 label 的後續排程會被整個跳過
+# (2026-09-18 21:41 那輪卡在 Google Sheets 14 小時,吃掉 09-19 早報)
+# -u 讓輸出即時落 log;卡住時才看得出進度到哪
+TIMEOUT=1200
+/usr/bin/python3 -u -W ignore main.py daily &
+py_pid=$!
+(
+    sleep $TIMEOUT
+    if kill -0 $py_pid 2>/dev/null; then
+        echo "[daily.sh] 逾時 ${TIMEOUT}s,中止本輪"
+        kill $py_pid 2>/dev/null
+        sleep 10
+        kill -9 $py_pid 2>/dev/null
+    fi
+) &
+watchdog_pid=$!
+wait $py_pid
 rc=$?
+pkill -P $watchdog_pid 2>/dev/null   # 先殺它的 sleep,否則 sleep 會拖著 fd 活滿 TIMEOUT
+kill $watchdog_pid 2>/dev/null
 
 git add -A data reports
 if ! git diff --cached --quiet; then
