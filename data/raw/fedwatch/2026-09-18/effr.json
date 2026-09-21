@@ -1,0 +1,1 @@
+{ "refRates": [ { "effectiveDate": "2026-09-18", "type": "EFFR" ,"percentRate": 3.88 ,"percentPercentile1": 3.85 ,"percentPercentile25": 3.88 ,"percentPercentile75": 3.89 ,"percentPercentile99": 3.90 ,"targetRateFrom": 3.75 ,"targetRateTo": 4.00 ,"volumeInBillions": 96 ,"revisionIndicator": "" } ] }
