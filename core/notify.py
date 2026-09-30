@@ -103,6 +103,10 @@ def notify(cfg, source, text, sig, dry_run=False, image_deliver=None):
     image_deliver 若給定:先試推圖(回傳 True 表示成功),圖成功就不推文字
     以免重複;圖渲染失敗則退回推文字。去重集中在此:圖或文字擇一送出後
     才寫入 state,故 8:10/8:40 兩輪同資料不會重送。
+
+    退回文字時另記一個 "<source>#textonly" 旗標,下一輪同資料仍會再試推圖
+    (圖推成功就清旗標)。否則一次 push 逾時就等於一整天沒圖 —— 去重只看
+    資料有沒有變,不知道上一輪只送出了文字。補圖失敗則不重送文字。
     """
     if not text:
         print(f"[notify] {source}: 無內容，跳過")
@@ -111,7 +115,9 @@ def notify(cfg, source, text, sig, dry_run=False, image_deliver=None):
         print(text)
         return False
     state = _load_state()
-    if state.get(source) == sig:
+    tkey = f"{source}#textonly"
+    retry_img = image_deliver is not None and state.get(tkey) == sig
+    if state.get(source) == sig and not retry_img:
         print(f"[notify] {source}: 資料未更新，跳過推播")
         return False
     via = None
@@ -122,9 +128,16 @@ def notify(cfg, source, text, sig, dry_run=False, image_deliver=None):
         except Exception as e:
             print(f"[notify] {source}: 圖渲染失敗，退回文字 — {e}")
     if via is None:
+        if retry_img:   # 文字稍早已送出,補圖又失敗 —— 不重送文字
+            print(f"[notify] {source}: 補圖仍失敗,文字稍早已送出,不重送")
+            return False
         push(_token(cfg), _target(cfg, source), text)
         via = f"文字 {len(text)} 字"
     state[source] = sig
+    if via == "圖片" or image_deliver is None:
+        state.pop(tkey, None)
+    else:
+        state[tkey] = sig
     STATE.write_text(json.dumps(state, ensure_ascii=False, indent=1))
     print(f"[notify] {source}: 已推播（{via}）")
     return True
