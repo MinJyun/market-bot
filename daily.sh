@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 # (2026-08-07 兩輪排程即因此全空轉)
 for i in {1..10}; do
     curl -s --max-time 5 -o /dev/null "https://www.twse.com.tw" && break
-    echo "[daily.sh] 網路未就緒,30 秒後重試($i/10)"
+    echo "[$(date +%m-%d\ %H:%M:%S)] [daily.sh] 網路未就緒,30 秒後重試($i/10)"
     sleep 30
 done
 
@@ -21,7 +21,7 @@ py_pid=$!
 (
     sleep $TIMEOUT
     if kill -0 $py_pid 2>/dev/null; then
-        echo "[daily.sh] 逾時 ${TIMEOUT}s,中止本輪"
+        echo "[$(date +%m-%d\ %H:%M:%S)] [daily.sh] 逾時 ${TIMEOUT}s,中止本輪"
         kill $py_pid 2>/dev/null
         sleep 10
         kill -9 $py_pid 2>/dev/null
@@ -36,7 +36,7 @@ kill $watchdog_pid 2>/dev/null
 git add -A data reports
 if ! git diff --cached --quiet; then
     git commit -q -m "daily snapshot $(date +%Y-%m-%d)"
-    git push -q || echo "push 失敗，快照僅存本機"
+    git push -q || echo "[$(date +%m-%d\ %H:%M:%S)] [daily.sh] push 失敗，快照僅存本機"
 fi
 
 exit $rc

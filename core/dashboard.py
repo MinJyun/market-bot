@@ -898,6 +898,38 @@ _RENDER = {"chips": render, "morning": render_morning,
            "stocks": render_stocks}
 
 
+def _git(base, *args, timeout=60):
+    return subprocess.run(["git", *args], cwd=base, capture_output=True,
+                          text=True, timeout=timeout)
+
+
+def _push_verified(base):
+    """push 後覆核遠端,因為 git 會在 push 其實已生效時回報失敗。
+
+    push 會把累積的 commit 一起推,不只這張 PNG。60 秒曾因 market.db(105 MB)
+    每日整檔入庫累積成 198 MB 而超時,五組推圖整天退回文字;該根因已解
+    (market.db 不進版控),300 秒是備援。
+
+    但 returncode 不等於實際結果:HTTPS 推送重試時,第一次已套用 ref、重試的
+    compare-and-swap 就會撞上「is at X but expected Y」而回非 0(2026-09-30
+    chips_pre 即如此),逾時也可能是回應慢而非沒推上去。只看 returncode 會
+    誤判成沒圖、白白退回文字。故失敗後比對遠端 ref 與本地 HEAD,一致就算成功。
+    """
+    try:
+        subprocess.run(["git", "push", "-q"], cwd=base, check=True,
+                       capture_output=True, timeout=300)
+        return
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        head = _git(base, "rev-parse", "HEAD").stdout.strip()
+        branch = _git(base, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+        out = _git(base, "ls-remote", "origin",
+                   f"refs/heads/{branch}").stdout.split()
+        if head and out and out[0] == head:
+            print(f"[dashboard] push 回報失敗,但遠端已是 {head[:8]},視為成功")
+            return
+        raise
+
+
 def deliver(conn, cfg, notifier, key):
     """render → 單獨 commit/push PNG → LINE 推圖。回傳是否成功推出圖片。"""
     got = _RENDER[key](conn)
@@ -912,12 +944,7 @@ def deliver(conn, cfg, notifier, key):
     r = subprocess.run(["git", "commit", "-q", "-m", f"{png_path.stem} {dd}"],
                        cwd=base, capture_output=True)
     if r.returncode == 0:  # 有新內容才需要 push
-        # push 會把累積的 commit 一起推,不只這張 PNG。60 秒曾因 market.db
-        # (105 MB)每日整檔入庫累積成 198 MB 而超時,五組推圖整天退回文字。
-        # 該根因已解(market.db 改為不進版控),這裡放寬是備援:網路一時慢
-        # 不該讓當天沒圖。
-        subprocess.run(["git", "push", "-q"], cwd=base, check=True,
-                       capture_output=True, timeout=300)
+        _push_verified(base)
     url = RAW_URL.format(dd=date.today().isoformat(), name=png_path.name)
     notifier.push_image(cfg, key, url)
     print(f"[dashboard] {key} 已推播圖片 {rel}")

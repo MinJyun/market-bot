@@ -58,6 +58,34 @@ def _write_daily_md(sections):
     print(f"[daily] 已寫入 {out / 'daily.md'}")
 
 
+class _Stamped:
+    """每行前綴時間戳。
+
+    daily.log 原本沒有時間,排查「哪一步卡住」只能靠檔案 mtime 與 commit
+    時間反推(2026-09-30 一輪跑了 27 分鐘就查不出慢在哪)。格式對齊
+    daily_broker.log。子程序(git 等)直接寫 fd,不經過這裡,不受影響。
+    """
+
+    def __init__(self, stream):
+        self._s = stream
+        self._bol = True            # 目前是否在行首
+
+    def write(self, text):
+        if not text:
+            return 0
+        out = []
+        for line in text.splitlines(keepends=True):
+            if self._bol:
+                out.append(datetime.now().strftime("[%m-%d %H:%M:%S] "))
+            out.append(line)
+            self._bol = line.endswith("\n")
+        self._s.write("".join(out))
+        return len(text)
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -69,6 +97,10 @@ def main():
     ap.add_argument("--days", type=int, default=10, help="backfill 回補天數")
     ap.add_argument("--dry-run", action="store_true", help="notify 只印不發")
     args = ap.parse_args()
+    # dry-run 印的是推播訊息本文,要能逐字元對照,不加時間戳
+    if not args.dry_run:
+        sys.stdout = _Stamped(sys.stdout)
+        sys.stderr = _Stamped(sys.stderr)
     only = set(args.source) if args.source else None
 
     conn = store.connect()
