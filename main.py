@@ -96,6 +96,9 @@ def main():
                     help="只處理指定來源(可重複),預設全部")
     ap.add_argument("--days", type=int, default=10, help="backfill 回補天數")
     ap.add_argument("--dry-run", action="store_true", help="notify 只印不發")
+    ap.add_argument("--catchup", action="store_true",
+                    help="忽略推播時窗,補推今天該推而未推的(機器睡過排程時用;"
+                         "重複由 notify 的簽章去重擋下)")
     args = ap.parse_args()
     # dry-run 印的是推播訊息本文,要能逐字元對照,不加時間戳
     if not args.dry_run:
@@ -155,7 +158,9 @@ def main():
             # 決定是否保留本輪:時窗未到,或先行版當日資料未齊(避免推殘缺)
             hold = None
             if not args.dry_run:
-                if key in SEND_WINDOW:
+                # --catchup:時段被睡過去才補推,內容對不對由資料簽章決定,
+                # 不該再被「現在幾點」擋下。重複送由 notify 去重負責
+                if key in SEND_WINDOW and not args.catchup:
                     lo, hi = SEND_WINDOW[key]
                     if not (lo <= datetime.now().hour < hi):
                         hold = f"只在 {lo}~{hi} 點間推播"
