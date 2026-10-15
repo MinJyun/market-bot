@@ -56,10 +56,11 @@ CREATE TABLE IF NOT EXISTS futures_inst (
     PRIMARY KEY (contract, data_date)
 );
 CREATE TABLE IF NOT EXISTS fut_price (
-    data_date  TEXT PRIMARY KEY,   -- YYYY-MM-DD
-    month      TEXT,               -- 取用的契約月份(一般時段成交量最大者=近月)
-    close      REAL,               -- 收盤價
-    settle     REAL                -- 結算價
+    data_date   TEXT PRIMARY KEY,  -- YYYY-MM-DD
+    month       TEXT,              -- 取用的契約月份(一般時段成交量最大者=近月)
+    close       REAL,              -- 收盤價
+    settle      REAL,              -- 結算價
+    settle_next REAL               -- 同日次月結算價(轉倉價差 = 本欄 − settle)
 );
 """
 
@@ -71,6 +72,9 @@ def init(conn):
     for c in ("foreign_trade", "trust_trade", "dealer_trade"):
         if c not in cols:
             conn.execute(f"ALTER TABLE futures_inst ADD COLUMN {c} REAL")
+    if "settle_next" not in {r[1] for r in
+                             conn.execute("PRAGMA table_info(fut_price)")}:
+        conn.execute("ALTER TABLE fut_price ADD COLUMN settle_next REAL")
 
 
 # ================================================================ 台指期價格
@@ -80,7 +84,8 @@ def _fetch_prices(conn, start: date, end: date):
         "down_type": "1", "commodity_id": "TX",
         "queryStartDate": f"{start:%Y/%m/%d}", "queryEndDate": f"{end:%Y/%m/%d}"})
     text = raw.decode("big5", errors="replace")
-    best = {}  # dd -> (volume, month, close, settle)
+    best = {}       # dd -> (volume, month, close, settle)
+    bymonth = {}    # dd -> {month: settle}  同日各月份,算轉倉價差用
     for row in csv.reader(io.StringIO(text)):
         # 交易日期,契約,到期月份,開,高,低,收,漲跌,漲跌%,成交量,結算價,... ,交易時段
         if len(row) < 18 or row[1].strip() != "TX" or row[17].strip() != "一般":
@@ -93,36 +98,55 @@ def _fetch_prices(conn, start: date, end: date):
         except ValueError:
             continue
         dd = row[0].strip().replace("/", "-")
+        bymonth.setdefault(dd, {})[month] = settle
         if dd not in best or vol > best[dd][0]:
             best[dd] = (vol, month, close, settle)
     if best:
+        rows = []
+        for dd, (v, m, c, s) in best.items():
+            later = sorted(x for x in bymonth[dd] if x > m)
+            rows.append((dd, m, c, s, bymonth[dd][later[0]] if later else None))
         with conn:
+            # 具名欄位:settle_next 是後來 ALTER 加的,positional INSERT 會錯位
             conn.executemany(
-                "INSERT OR REPLACE INTO fut_price VALUES (?,?,?,?)",
-                [(dd, m, c, s) for dd, (v, m, c, s) in best.items()])
+                "INSERT OR REPLACE INTO fut_price "
+                "(data_date,month,close,settle,settle_next) VALUES (?,?,?,?,?)",
+                rows)
         store.save_raw(NAME, max(best), "futDataDown", "csv", raw)
     return len(best)
 
 
 # ================================================================ 成本估算
 def _foreign_cost(conn):
-    """外資台指期估算成本:加碼以當日結算價攤入、減碼不動、翻向重置。
+    """外資台指期估算成本:加碼以當日結算價攤入、減碼不動、翻向重置、轉倉墊價差。
+
+    **轉倉價差**:結算後成交量move到次月,fut_price 取的「成交量最大月份」
+    就換了標的,但淨部位不變 —— 只看部位增減的話成本會完全不動,而實際上
+    部位是以次月價格重新建立的。台指期次月一向正價差(2025-09~2026-10 的 13
+    次轉倉全為正,+8 ~ +355 點),不墊就會系統性低估成本:2026-03 起算至
+    2026-10 共 7 次轉倉、合計 +1,197 點,正是估算成本與期交所未平倉均價
+    差距的主因。整個部位都要轉倉,故與部位大小無關,直接把價差加進成本。
+    (近似:實務上外資分散數日轉倉,這裡以切換當日的單日價差代表。)
 
     回傳 (成本, 最新結算價, 淨部位口數, 浮動損益億, 起算日) 或 None(資料不足)。
     """
     rows = conn.execute(
-        "SELECT i.data_date, i.foreign_net, p.settle FROM futures_inst i "
-        "JOIN fut_price p ON p.data_date = i.data_date "
+        "SELECT i.data_date, i.foreign_net, p.settle, p.month, p.settle_next "
+        "FROM futures_inst i JOIN fut_price p ON p.data_date = i.data_date "
         "WHERE i.contract = '台指期' ORDER BY i.data_date").fetchall()
     if len(rows) < 2:
         return None
     start, pos, cost = rows[0][0], rows[0][1], rows[0][2]
-    for dd, net, settle in rows[1:]:
+    prev_month, prev_settle, prev_next = rows[0][3], rows[0][2], rows[0][4]
+    for dd, net, settle, month, settle_next in rows[1:]:
+        if month != prev_month and prev_next and prev_settle:
+            cost += prev_next - prev_settle     # 轉倉:成本平移一個價差
         if pos == 0 or (pos > 0) != (net > 0):     # 空手或翻向:整筆以今日價重置
             cost, start = settle, dd
         elif abs(net) > abs(pos):                   # 同向加碼:增量攤入
             cost = (cost * abs(pos) + settle * (abs(net) - abs(pos))) / abs(net)
         pos = net                                   # 減碼:成本不動
+        prev_month, prev_settle, prev_next = month, settle, settle_next
     settle = rows[-1][2]
     pnl = (settle - cost) * pos * 200 / 1e8         # 台指期每點 200 元
     return cost, settle, pos, pnl, start
