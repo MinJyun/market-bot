@@ -1,15 +1,16 @@
 #!/bin/zsh
-# 每日排程入口（launchd 每 30 分鐘巡邏一次呼叫，不是固定時刻觸發）
+# 每日排程入口（launchd 每 10 分鐘巡邏一次呼叫，不是固定時刻觸發）
 #
 # 時段由 tools_slot.py 以**台北時間**判斷，原因見該檔：機器時區會變（人在
 # 國外）、機器睡著會錯過固定時刻。巡邏式讓睡過頭的時段醒來後補得回來。
+# 2026-10-14 人已回台灣，--catchup 拿掉，各組恢復各自的推播時窗。
 set -u
 cd "$(dirname "$0")"
 export TZ=Asia/Taipei      # 程式內的日期/時窗/交易日判斷一律用台北時間
 
 ts() { date +'%m-%d %H:%M:%S' }
 
-# 沒有時段到期就安靜結束（每 30 分鐘會進來一次，不要洗 log）
+# 沒有時段到期就安靜結束（每 10 分鐘會進來一次，不要洗 log）
 SLOT=$(/usr/bin/python3 tools_slot.py due) || exit 0
 
 # 剛喚醒時 DNS 常還沒就緒，整輪抓取會全軍覆沒（2026-10-03、10-05 兩次）。
@@ -29,7 +30,7 @@ echo "[$(ts)] [daily.sh] ===== $SLOT 時段開始 ====="
 # 整輪上限 20 分鐘：任何一處網路呼叫 hang 住都不能佔住 launchd 的 job
 # （2026-09-18 那輪卡在 Google Sheets 14 小時，吃掉隔天早報）
 TIMEOUT=1200
-/usr/bin/python3 -u -W ignore main.py daily --catchup &
+/usr/bin/python3 -u -W ignore main.py daily &
 py_pid=$!
 (
     sleep $TIMEOUT
