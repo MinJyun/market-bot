@@ -1,0 +1,86 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>
+* { margin:0; padding:0; box-sizing:border-box;
+    font-family:'PingFang TC','Heiti TC',sans-serif; }
+body { width:1020px; background:#eef1f6; padding:10px; }
+.row { display:flex; gap:10px; margin-bottom:10px; }
+.card { background:#fff; border-radius:10px; overflow:hidden; flex:1;
+        box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.hd { background:#1a2f5e; color:#fff; font-size:17px; font-weight:700;
+      padding:8px 14px; }
+.hd small { font-weight:400; opacity:.85; margin-left:8px; font-size:13px; }
+.bd { padding:10px 14px; }
+.up { color:#d0342c; } .dn { color:#1a8a4a; } .flat { color:#666; }
+table { width:100%; border-collapse:collapse; font-size:15px; }
+th { color:#555; font-weight:600; text-align:left; padding:5px 4px;
+     border-bottom:1px solid #dde; font-size:13px; }
+td { padding:5px 4px; border-bottom:1px solid #f0f2f6; }
+td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+.big { font-size:34px; font-weight:800; letter-spacing:.5px; }
+.mid { font-size:20px; font-weight:700; }
+.lbl { color:#667; font-size:13px; margin-top:8px; }
+.bars { display:flex; align-items:flex-end; gap:14px; height:120px;
+        margin:14px 6px 4px; }
+.bargrp { flex:1; display:flex; flex-direction:column; align-items:center;
+          height:100%; justify-content:flex-end; }
+.barv { font-size:13px; font-weight:700; margin-bottom:2px; }
+.bar { width:34px; border-radius:3px 3px 0 0; }
+.barn { font-size:13px; color:#555; margin-top:4px; }
+.cols { display:flex; gap:10px; }
+.col { flex:1; border:1px solid #e2e6ee; border-radius:8px; padding:8px 10px; }
+.colhd { text-align:center; font-weight:700; font-size:16px; padding:4px 0 6px; }
+.kv { display:flex; justify-content:space-between; font-size:14.5px;
+      padding:2.5px 0; gap:6px; }
+.kv span:first-child { white-space:nowrap; color:#445; }
+.kv b { font-variant-numeric:tabular-nums; text-align:right;
+        white-space:nowrap; }
+.sep { border-top:1px dashed #ccd3e0; margin:6px 0; }
+.donutwrap { display:flex; align-items:center; gap:14px; flex:1; }
+.donut { width:110px; height:110px; border-radius:50%; position:relative; }
+.donut .hole { position:absolute; inset:18px; background:#fff;
+               border-radius:50%; display:flex; align-items:center;
+               justify-content:center; font-weight:800; font-size:17px; }
+.legend { font-size:13.5px; line-height:1.7; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:2px;
+       margin-right:5px; }
+.note { color:#778; font-size:12px; padding:2px 6px 8px; }
+.mgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.mtile { border:1px solid #e2e6ee; border-radius:8px; padding:9px 12px; }
+.mname { color:#667; font-size:13.5px; }
+.mval { font-size:27px; font-weight:800; font-variant-numeric:tabular-nums;
+        line-height:1.15; }
+.mchg { font-size:14px; font-weight:700; }
+.etfcol { column-count:2; column-gap:10px; }
+.etfcol .card { flex:none; margin-bottom:10px; break-inside:avoid; }
+.etfrow { display:flex; justify-content:space-between; gap:10px;
+          font-size:14px; padding:2.5px 0; }
+.etfrow span { color:#334; }
+.etfrow b { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.etfsub { font-size:13px; font-weight:700; color:#556; margin:6px 0 1px; }
+.etffut { font-size:13px; color:#7a5; font-weight:700; padding:2px 0; }
+.etfflat { color:#889; font-size:13.5px; padding:3px 0; }
+.banner { background:#1a2f5e; color:#fff; font-size:19px; font-weight:800;
+          padding:9px 14px; border-radius:10px; margin-bottom:10px; }
+.banner small { font-weight:400; opacity:.85; font-size:14px; margin-left:8px; }
+.oi { font-weight:400; font-size:12.5px; color:#889; margin-left:6px; }
+.subnote { font-size:12px; color:#556; padding:7px 2px 1px; text-align:center; }
+.muted { color:#8894a5; font-size:11.5px; margin-left:5px; }
+.chgsmall { font-size:11.5px; margin-left:4px; }
+.cols table { font-size:14px; }
+.cols th, .cols td { padding:4px 4px; }
+</style></head><body>
+    <div class="banner">📊 個股籌碼<small>11/18 三大法人買賣超前五</small></div>
+    <div class="row">
+    <div class="card">
+      <div class="hd">📊 上市個股·法人買賣超<small>11/18(張)</small></div>
+      <div class="bd"><div class="cols"><div class="col"><div class="colhd">三大法人</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>群創<span class="muted">3481</span></span><b class="up">+19,670張</b></div><div class="etfrow"><span>中鼎<span class="muted">9933</span></span><b class="up">+9,738張<span class="chgsmall">連7買</span></b></div><div class="etfrow"><span>神達<span class="muted">3706</span></span><b class="up">+8,770張<span class="chgsmall">連4買</span></b></div><div class="etfrow"><span>台灣大<span class="muted">3045</span></span><b class="up">+6,813張</b></div><div class="etfrow"><span>華航<span class="muted">2610</span></span><b class="up">+6,149張<span class="chgsmall">連13買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>玉山金<span class="muted">2884</span></span><b class="dn">-46,813張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>台玻<span class="muted">1802</span></span><b class="dn">-28,234張<span class="chgsmall">連4賣</span></b></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="dn">-26,161張</b></div><div class="etfrow"><span>友達<span class="muted">2409</span></span><b class="dn">-16,399張<span class="chgsmall">連4賣</span></b></div><div class="etfrow"><span>元大金<span class="muted">2885</span></span><b class="dn">-9,995張</b></div></div><div class="col"><div class="colhd">外資</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>群創<span class="muted">3481</span></span><b class="up">+14,465張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>中鼎<span class="muted">9933</span></span><b class="up">+11,996張<span class="chgsmall">連7買</span></b></div><div class="etfrow"><span>神達<span class="muted">3706</span></span><b class="up">+9,468張<span class="chgsmall">連3買</span></b></div><div class="etfrow"><span>台灣大<span class="muted">3045</span></span><b class="up">+6,659張</b></div><div class="etfrow"><span>陽明<span class="muted">2609</span></span><b class="up">+4,815張<span class="chgsmall">連5買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>玉山金<span class="muted">2884</span></span><b class="dn">-42,999張</b></div><div class="etfrow"><span>台玻<span class="muted">1802</span></span><b class="dn">-28,093張<span class="chgsmall">連4賣</span></b></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="dn">-24,982張</b></div><div class="etfrow"><span>友達<span class="muted">2409</span></span><b class="dn">-17,890張<span class="chgsmall">連4賣</span></b></div><div class="etfrow"><span>台積電<span class="muted">2330</span></span><b class="dn">-15,453張<span class="chgsmall">連5賣</span></b></div></div><div class="col"><div class="colhd">投信</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>大成鋼<span class="muted">2027</span></span><b class="up">+13,172張<span class="chgsmall">連8買</span></b></div><div class="etfrow"><span>中信金<span class="muted">2891</span></span><b class="up">+7,514張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>友達<span class="muted">2409</span></span><b class="up">+6,344張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>群創<span class="muted">3481</span></span><b class="up">+6,234張</b></div><div class="etfrow"><span>國泰金<span class="muted">2882</span></span><b class="up">+6,202張<span class="chgsmall">連14買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>元大金<span class="muted">2885</span></span><b class="dn">-9,649張<span class="chgsmall">連7賣</span></b></div><div class="etfrow"><span>玉山金<span class="muted">2884</span></span><b class="dn">-8,188張<span class="chgsmall">連7賣</span></b></div><div class="etfrow"><span>兆豐金<span class="muted">2886</span></span><b class="dn">-7,595張<span class="chgsmall">連6賣</span></b></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="dn">-6,435張<span class="chgsmall">連7賣</span></b></div><div class="etfrow"><span>寶成<span class="muted">9904</span></span><b class="dn">-5,525張<span class="chgsmall">連3賣</span></b></div></div></div></div>
+    </div></div><div class="row">
+    <div class="card">
+      <div class="hd">📊 上櫃個股·法人買賣超<small>11/18(張)</small></div>
+      <div class="bd"><div class="cols"><div class="col"><div class="colhd">三大法人</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>台燿<span class="muted">6274</span></span><b class="up">+1,964張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>信昌電<span class="muted">6173</span></span><b class="up">+1,940張</b></div><div class="etfrow"><span>雷笛克光學<span class="muted">5230</span></span><b class="up">+997張</b></div><div class="etfrow"><span>倉和<span class="muted">6538</span></span><b class="up">+982張</b></div><div class="etfrow"><span>天品<span class="muted">6199</span></span><b class="up">+925張<span class="chgsmall">連4買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>富喬<span class="muted">1815</span></span><b class="dn">-6,364張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>精材<span class="muted">3374</span></span><b class="dn">-5,614張<span class="chgsmall">連3賣</span></b></div><div class="etfrow"><span>世紀*<span class="muted">5314</span></span><b class="dn">-4,711張<span class="chgsmall">連3賣</span></b></div><div class="etfrow"><span>穩懋<span class="muted">3105</span></span><b class="dn">-4,101張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>金居<span class="muted">8358</span></span><b class="dn">-1,446張</b></div></div><div class="col"><div class="colhd">外資</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>台燿<span class="muted">6274</span></span><b class="up">+4,655張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>信昌電<span class="muted">6173</span></span><b class="up">+1,827張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>金居<span class="muted">8358</span></span><b class="up">+1,138張<span class="chgsmall">連3買</span></b></div><div class="etfrow"><span>雷笛克光學<span class="muted">5230</span></span><b class="up">+1,023張</b></div><div class="etfrow"><span>台半<span class="muted">5425</span></span><b class="up">+1,009張</b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>富喬<span class="muted">1815</span></span><b class="dn">-6,534張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>穩懋<span class="muted">3105</span></span><b class="dn">-4,836張<span class="chgsmall">連2賣</span></b></div><div class="etfrow"><span>世紀*<span class="muted">5314</span></span><b class="dn">-4,470張<span class="chgsmall">連3賣</span></b></div><div class="etfrow"><span>精材<span class="muted">3374</span></span><b class="dn">-3,563張<span class="chgsmall">連3賣</span></b></div><div class="etfrow"><span>合晶<span class="muted">6182</span></span><b class="dn">-985張</b></div></div><div class="col"><div class="colhd">投信</div><div class="etfsub"><span class="up">買超</span></div><div class="etfrow"><span>穩懋<span class="muted">3105</span></span><b class="up">+1,010張<span class="chgsmall">連8買</span></b></div><div class="etfrow"><span>光洋科<span class="muted">1785</span></span><b class="up">+490張</b></div><div class="etfrow"><span>元太<span class="muted">8069</span></span><b class="up">+394張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>新盛力<span class="muted">4931</span></span><b class="up">+281張<span class="chgsmall">連2買</span></b></div><div class="etfrow"><span>鈊象<span class="muted">3293</span></span><b class="up">+202張<span class="chgsmall">連2買</span></b></div><div class="etfsub"><span class="dn">賣超</span></div><div class="etfrow"><span>台燿<span class="muted">6274</span></span><b class="dn">-2,767張<span class="chgsmall">連7賣</span></b></div><div class="etfrow"><span>金居<span class="muted">8358</span></span><b class="dn">-2,471張<span class="chgsmall">連4賣</span></b></div><div class="etfrow"><span>台半<span class="muted">5425</span></span><b class="dn">-1,985張</b></div><div class="etfrow"><span>精材<span class="muted">3374</span></span><b class="dn">-1,863張</b></div><div class="etfrow"><span>中美晶<span class="muted">5483</span></span><b class="dn">-1,148張</b></div></div></div></div>
+    </div></div><div class="row">
+    <div class="card">
+      <div class="hd">🎯 ETF關注股<small>主動ETF持股 ∩ 三大法人買賣超</small></div>
+      <div class="bd"><div class="etfcol"><div class="etfrow"><span>玉山金<span class="muted">2884</span></span><b class="dn">-46,813張</b></div><div class="etfrow"><span>台玻<span class="muted">1802</span></span><b class="dn">-28,234張</b></div><div class="etfrow"><span>台新新光金<span class="muted">2887</span></span><b class="dn">-26,161張</b></div><div class="etfrow"><span>元大金<span class="muted">2885</span></span><b class="dn">-9,995張</b></div><div class="etfrow"><span>南亞<span class="muted">1303</span></span><b class="dn">-9,695張</b></div><div class="etfrow"><span>景碩<span class="muted">3189</span></span><b class="dn">-8,263張</b></div><div class="etfrow"><span>台積電<span class="muted">2330</span></span><b class="dn">-6,885張</b></div><div class="etfrow"><span>台灣大<span class="muted">3045</span></span><b class="up">+6,813張</b></div></div></div>
+    </div></div>
+    </body></html>
